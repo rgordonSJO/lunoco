@@ -1,0 +1,44 @@
+# Build outputs and local SDK / IDE state
+.gradle/
+.kotlin/
+.idea/
+.vscode/
+**/build/
+local.properties
+*.iml
+.cxx/
+.externalNativeBuild/
+captures/
+# Private signing and authentication
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+credentials*
+secrets*
+google-services.json
+# Diagnostics, accounts, local publication evidence
+/profiling/
+/branding/
+/local_scripts/
+*.log
+*.db
+*.db-*
+*.sqlite*
+*.hprof
+*.heapdump
+*.perfetto-trace
+*.dmp
+*.apk
+*.aab
+output-metadata.json
+.DS_Store
+# Optional privately built native extensions
+/app/libs/
+/app/src/main/obj/
+/app/src/main/libs/
+/app/src/main/jniLibs/
