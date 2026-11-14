@@ -7,7 +7,7 @@ https://github.com/rgordonSJO/lunoco/releases/latest/download/Lunoco.apk
 GitHub documents this stable latest-release asset format:
 https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases
 
-Create one numeric code at https://go.aftvnews.com/ targeting **that complete URL**, not a versioned download or release HTML page. Reuse it indefinitely while the owner, repository and asset filename remain the same. No code is invented or automatically assigned here.
+Official Downloader code: **7639133**. It targets the permanent asset URL above. Reuse this code for future stable releases while the owner, repository and asset filename remain the same; do not replace its destination with a versioned download or release HTML page.
 
 ## Maintainer checklist
 
