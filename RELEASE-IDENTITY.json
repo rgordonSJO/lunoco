@@ -1,0 +1,12 @@
+{
+  "release": "v0.10.2",
+  "title": "Lunoco 10B.2 — Navigation & Discovery",
+  "developmentSourceCommit": "7268ce4a1a0b62b4d9a1fc152159ae4e2693d786",
+  "asset": "Lunoco.apk",
+  "sha256": "827705edde6e96dea712436d42351ef54175d495b666c73afc93cd4eaebd1d92",
+  "package": "com.ryan.lunatv.jellyfin.performance",
+  "versionName": "0.0.0-local-perf-lunoco-navigation-10b2",
+  "versionCode": 1,
+  "signerSHA256": "57a0d2a501b9a679311a88aad8d9b41a1b605119ce2cf638694dae2563cf1045",
+  "rebuiltForPublication": false
+}
