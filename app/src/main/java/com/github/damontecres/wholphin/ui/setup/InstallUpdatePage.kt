@@ -1,8 +1,6 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.setup
 
-import android.Manifest
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
@@ -106,7 +104,7 @@ class UpdateViewModel
                         )
                     }
                 } catch (ex: Exception) {
-                    Timber.e(ex, "Error fetching release from %s", updateUrl)
+                    Timber.w("Lunoco update check failed")
                     _state.update { it.copy(loading = LoadingState.Error(ex)) }
                 }
             }
@@ -169,17 +167,7 @@ fun InstallUpdatePage(
     OneTimeLaunchedEffect { viewModel.init() }
 
     val state by viewModel.state.collectAsState()
-    var permissions by remember { mutableStateOf(viewModel.updater.hasPermissions()) }
-    val launcher =
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.RequestPermission(),
-        ) { isGranted: Boolean ->
-            if (isGranted) {
-                permissions = true
-            } else {
-                // TODO
-            }
-        }
+    // Secure updater writes only to app-private cache; no storage permission prompt.
     when (val st = state.loading) {
         is LoadingState.Error -> {
             ErrorMessage(st, modifier)
@@ -198,11 +186,7 @@ fun InstallUpdatePage(
                     currentVersion = viewModel.currentVersion,
                     release = release,
                     onInstallRelease = {
-                        if (!permissions) {
-                            launcher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                        } else {
-                            viewModel.installRelease(release)
-                        }
+                        viewModel.installRelease(release)
                     },
                     onCancel = {
                         viewModel.navigationManager.goBack()

@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.cards
 
 import androidx.compose.foundation.background
@@ -36,6 +37,8 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -110,6 +113,9 @@ fun BannerCard(
         onClick = { currentOnClick() },
         onLongClick = { currentOnLongClick() },
         interactionSource = interactionSource,
+        border = if (LocalLunocoContentStyle.current) {
+            CardDefaults.border(focusedBorder = LunocoContentStyle.FocusBorder)
+        } else CardDefaults.border(),
         scale = if (calmHome) CardDefaults.scale(focusedScale = 1f) else CardDefaults.scale(),
         colors =
             CardDefaults.colors(

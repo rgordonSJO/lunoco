@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import androidx.compose.runtime.Composable
@@ -19,8 +20,7 @@ internal const val SPOTLIGHT_ROTATION_INTERVAL_MS = 10_000L
 // A State is provided so scrolling invalidates only the timer, not the Home composition.
 internal val LocalSpotlightVisibility = staticCompositionLocalOf<State<Boolean>> { mutableStateOf(true) }
 
-internal fun spotlightMayAutoRotate(count: Int, controlsFocused: Boolean, visible: Boolean) =
-    count > 1 && !controlsFocused && visible
+internal fun spotlightMayAutoRotate(count: Int, visible: Boolean) = count > 1 && visible
 
 /** One cancellable foreground loop; no tick state, metadata access or focus requests. */
 internal suspend fun rotateSpotlightWhileResumed(lifecycle: Lifecycle, advance: () -> Unit) {
@@ -36,24 +36,25 @@ internal suspend fun rotateSpotlightWhileResumed(lifecycle: Lifecycle, advance: 
 internal fun SpotlightAutoRotation(
     movieCount: Int,
     selection: State<String?>,
-    controlsFocused: State<Boolean>,
+    manualNavigation: State<Long>,
     onNext: () -> Unit,
 ) {
     val viewport = LocalSpotlightVisibility.current
     val visible by viewport
     val selectedId = selection.value // Immutable snapshot for the old tick's identity guard.
-    val interacting by controlsFocused
+    val manualGeneration = manualNavigation.value
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val advance by rememberUpdatedState(onNext)
-    // Changing the displayed ID (including manual paging) starts a fresh interval.
-    // Focus/visibility/lifecycle cancellation never changes the selected movie.
-    LaunchedEffect(lifecycle, selection, movieCount, selectedId, interacting, visible) {
-        if (spotlightMayAutoRotate(movieCount, interacting, visible)) {
+    // Paging starts a fresh interval; ordinary focus changes do not restart or pause it.
+    // The generation also covers rapid manual round trips back to the same selected ID.
+    LaunchedEffect(lifecycle, selection, movieCount, selectedId, manualNavigation, manualGeneration, visible) {
+        if (spotlightMayAutoRotate(movieCount, visible)) {
             rotateSpotlightWhileResumed(lifecycle) {
-                // A manual action/focus event may precede effect cancellation by one frame.
+                // A manual action or lifecycle/visibility change can precede effect cancellation.
                 // Never let an already-waiting tick overwrite that newer interaction.
-                if (selection.value == selectedId &&
-                    spotlightMayAutoRotate(movieCount, controlsFocused.value, viewport.value)) {
+                if (selection.value == selectedId && manualNavigation.value == manualGeneration &&
+                    lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                    spotlightMayAutoRotate(movieCount, viewport.value)) {
                     advance()
                 }
             }

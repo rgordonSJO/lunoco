@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import com.github.damontecres.wholphin.data.model.HomeRowConfig
@@ -84,8 +85,10 @@ internal fun selectSpotlightMovies(
     epochDay: Long,
     limit: Int = 5,
     collections: Map<UUID, Set<UUID>> = emptyMap(),
+    history: List<SpotlightDay> = emptyList(),
 ): List<BaseItemDto> {
     if (limit <= 0) return emptyList()
+    val relevantHistory = history.filter { it.day in (epochDay - 7)..epochDay }
     val sorted = candidates.asSequence().filter { spotlightEligible(it, scope) }
         .map { it.movie }.distinctBy { it.id }
         .sortedWith(compareBy<BaseItemDto> { spotlightRank(it).tier }
@@ -111,11 +114,9 @@ internal fun selectSpotlightMovies(
         .joinToString(":").hashCode().toLong()
     val start = Math.floorMod(Math.floorMod(epochDay, size) * stride + accountOffset, size).toInt()
     val rotated = List(shortlist.size) { shortlist[(start + it) % shortlist.size] }
-    val selected = mutableListOf<BaseItemDto>()
-    val represented = mutableSetOf<UUID>()
-    // Verified BoxSet membership only. An unknown membership never implies a franchise.
-    // Keep the existing daily lead traversal; skip siblings before filling remaining places.
-    if (collections.isEmpty()) return rotated.take(count)
+    val franchises = spotlightFranchiseKeys(sorted, collections)
+    // Preserve the daily lead/seed; broaden within the bounded eligible pool when diversity
+    // or recorded recent selections require alternatives outside the quality shortlist.
     // Adjacent skipping alone repeatedly favors the first title in each collection.
     // Mix only tie-breaks inside the existing quality/artwork bands, once per daily load.
     fun varietyKey(movie: BaseItemDto): Long {
@@ -133,16 +134,9 @@ internal fun selectSpotlightMovies(
             .thenByDescending { spotlightHasBackdrop(it) }
             .thenBy { varietyKey(it) }.thenBy { it.id.toString() },
     )
-    for (movie in diversityPool) {
-        val memberships = collections[movie.id].orEmpty()
-        if (memberships.none { it in represented }) {
-            selected += movie
-            represented += memberships
-            if (selected.size == count) return selected
-        }
-    }
-    // Small pools or ubiquitous collections cannot provide impossible variety.
-    return (selected + rotated).distinctBy { it.id }.take(count)
+    val order = if (franchises.values.any { it.isNotEmpty() } || relevantHistory.isNotEmpty()) diversityPool
+        else (rotated + sorted).distinctBy { it.id }
+    return curateSpotlightMovies(order, epochDay, count, franchises, relevantHistory)
 }
 
 internal fun spotlightResumeMs(movie: BaseItemDto): Long {

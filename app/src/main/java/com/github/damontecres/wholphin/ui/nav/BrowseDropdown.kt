@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.nav
 
 import androidx.activity.compose.BackHandler
@@ -73,20 +74,16 @@ internal fun BrowseDropdown(
     val menuTitle = stringResource(R.string.lunoco_browse_menu, label)
     val menuState = stringResource(if (open) R.string.lunoco_menu_expanded else R.string.lunoco_menu_collapsed)
     Box(modifier) {
-        Button(
+        BrowseButton(
             onClick = { restoreOrigin = false; open = true },
-            scale = ButtonDefaults.scale(focusedScale = 1f),
-            colors = ButtonDefaults.colors(
-                containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                contentColor = if (selectedIndex >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                focusedContentColor = MaterialTheme.colorScheme.primary,
-            ),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            modifier = Modifier.height(34.dp).focusRequester(origin)
+            selected = selectedIndex >= 0,
+            modifier = Modifier.focusRequester(origin)
                 .semantics { stateDescription = menuState },
         ) {
-            Text(label, fontSize = 15.sp, maxLines = 1)
+            Text(label, fontSize = if (LocalFloatingNavigationCompact.current) 14.sp else 15.sp,
+                lineHeight = if (LocalFloatingNavigationCompact.current) 18.sp else 20.sp,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 180.dp))
             Spacer(Modifier.width(3.dp))
             Icon(Icons.Default.ArrowDropDown, null, Modifier.size(14.dp))
         }

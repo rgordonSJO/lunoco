@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.preferences
 
 import androidx.annotation.StringRes
@@ -106,7 +107,6 @@ object LunocoSettingsCatalog {
         "support.version" to AppPreference.InstalledVersion,
         "support.update" to AppPreference.Update,
         "support.update_auto" to AppPreference.AutoCheckForUpdates,
-        "support.update_url" to AppPreference.UpdateUrl,
         "support.licenses" to AppPreference.OssLicenseInfo,
         "support.cache_size" to AppPreference.ImageDiskCacheSize,
         "support.cache_clear" to AppPreference.ClearImageCache,
@@ -171,10 +171,15 @@ object LunocoSettingsCatalog {
         preferences: AppPreferences,
         route: PreferenceScreenOption,
         page: PreferenceScreenOption = route,
+        updatingEnabled: Boolean = BuildConfig.LUNOCO_GITHUB_UPDATES_ENABLED && BuildConfig.LUNOCO_STABLE_RELEASE,
     ): List<LunocoSettingEntry> =
-        if (route == PreferenceScreenOption.BASIC) primaryEntries(category) else entries(category, preferences, page)
+        if (route == PreferenceScreenOption.BASIC) primaryEntries(category, updatingEnabled)
+        else entries(category, preferences, page, updatingEnabled = updatingEnabled)
 
-    fun primaryEntries(category: LunocoSettingsCategory): List<LunocoSettingEntry> = when (category) {
+    fun primaryEntries(
+        category: LunocoSettingsCategory,
+        updatingEnabled: Boolean = BuildConfig.LUNOCO_GITHUB_UPDATES_ENABLED && BuildConfig.LUNOCO_STABLE_RELEASE,
+    ): List<LunocoSettingEntry> = when (category) {
         LunocoSettingsCategory.PLAYBACK -> listOf(
             entry(AppPreference.AutoPlayNextUp, R.string.playback).copy(title = R.string.lunoco_settings_autoplay),
             entry(AppPreference.UserProfileSettings, R.string.lunoco_settings_audio).copy(
@@ -194,14 +199,18 @@ object LunocoSettingsCatalog {
             entry(AppPreference.UserInterfaceLanguage, R.string.profile).copy(title = R.string.lunoco_settings_app_language),
             entry(AppPreference.ProtectProfilePreference, R.string.profile),
         )
-        LunocoSettingsCategory.SUPPORT -> listOf(
-            entry(AppPreference.InstalledVersion, R.string.about),
-            entry(AppPreference.OssLicenseInfo, R.string.about),
-            LunocoSettingEntry("about.advanced", title = R.string.advanced_settings,
+        LunocoSettingsCategory.SUPPORT -> buildList {
+            add(entry(AppPreference.InstalledVersion, R.string.about))
+            if (updatingEnabled) {
+                add(entry(AppPreference.Update, R.string.about))
+                add(entry(AppPreference.AutoCheckForUpdates, R.string.about))
+            }
+            add(entry(AppPreference.OssLicenseInfo, R.string.about))
+            add(LunocoSettingEntry("about.advanced", title = R.string.advanced_settings,
                 section = R.string.lunoco_settings_more,
                 description = R.string.lunoco_settings_advanced_hint,
-                destination = Destination.Settings(PreferenceScreenOption.ADVANCED)),
-        )
+                destination = Destination.Settings(PreferenceScreenOption.ADVANCED)))
+        }
         else -> emptyList()
     }
 
@@ -209,7 +218,7 @@ object LunocoSettingsCatalog {
         category: LunocoSettingsCategory,
         preferences: AppPreferences,
         screen: PreferenceScreenOption = PreferenceScreenOption.BASIC,
-        updatingEnabled: Boolean = BuildConfig.UPDATING_ENABLED,
+        updatingEnabled: Boolean = BuildConfig.LUNOCO_GITHUB_UPDATES_ENABLED && BuildConfig.LUNOCO_STABLE_RELEASE,
         discoverEnabled: Boolean = BuildConfig.DISCOVER_ENABLED,
     ): List<LunocoSettingEntry> = buildList {
         fun group(title: Int, vararg prefs: LunocoAppPreference) {
@@ -293,7 +302,7 @@ object LunocoSettingsCatalog {
             LunocoSettingsCategory.SUPPORT -> {
                 group(R.string.about, AppPreference.InstalledVersion, AppPreference.OssLicenseInfo)
                 if (updatingEnabled) group(R.string.updates,
-                    AppPreference.Update, AppPreference.AutoCheckForUpdates, AppPreference.UpdateUrl)
+                    AppPreference.Update, AppPreference.AutoCheckForUpdates)
                 group(R.string.lunoco_settings_cache, AppPreference.ImageDiskCacheSize, AppPreference.ClearImageCache)
                 group(R.string.lunoco_settings_reporting, AppPreference.SendCrashReports, AppPreference.SendAppLogs,
                     AppPreference.DebugLogging)

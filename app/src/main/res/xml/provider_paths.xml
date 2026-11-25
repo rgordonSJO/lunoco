@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22. -->
 <paths>
-    <external-path name="external_files" path="Download"/>
+    <cache-path name="lunoco_updates" path="updates/" />
 </paths>

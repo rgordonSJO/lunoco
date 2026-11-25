@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.detail.livetv
 
 import androidx.compose.foundation.background
@@ -24,6 +25,8 @@ import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import androidx.tv.material3.Text
 import androidx.tv.material3.surfaceColorAtElevation
 import coil3.compose.AsyncImage
@@ -57,10 +60,13 @@ fun Program(
             }
         }
     val title = program.name ?: program.id.toString()
+    val neutral = LocalLunocoContentStyle.current
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
         shape = ClickableSurfaceDefaults.shape(shape),
+        border = if (neutral) ClickableSurfaceDefaults.border(focusedBorder = LunocoContentStyle.FocusBorder)
+            else ClickableSurfaceDefaults.border(),
         scale = ClickableSurfaceDefaults.scale(1f, 1f, .95f),
         colors =
             ClickableSurfaceDefaults.colors(
@@ -72,8 +78,8 @@ fun Program(
                         MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
                     },
                 contentColor = MaterialTheme.colorScheme.onSurface,
-                focusedContainerColor = MaterialTheme.colorScheme.inverseSurface,
-                focusedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                focusedContainerColor = if (neutral) LunocoContentStyle.Focused else MaterialTheme.colorScheme.inverseSurface,
+                focusedContentColor = if (neutral) LunocoContentStyle.Ivory else MaterialTheme.colorScheme.inverseOnSurface,
             ),
         modifier =
             modifier

@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import android.content.Context
@@ -90,6 +91,7 @@ class HomeViewModel
         private var dataLoadingJob: Job? = null
         private var backdropJob: Job? = null
         private var navigationJob: Job? = null
+        private val recentEpisodeTargets = RecentEpisodeTargetCache()
 
         fun openHomeItem(rowType: HomeRowConfig?, item: BaseItem) {
             navigationJob?.cancel()
@@ -105,7 +107,7 @@ class HomeViewModel
             val serverId = serverRepository.currentServer?.id
             navigationJob = viewModelScope.launch {
                 val resolved = withContext(WholphinDispatchers.IO) {
-                    resolveRecentSeriesDestination(serverRepository.apiClient, user?.id, rowType, item)
+                    resolveRecentSeriesDestination(serverRepository.apiClient, user?.id, rowType, item, recentEpisodeTargets)
                 }
                 if (navigationManager.backStack.lastOrNull() is Destination.Home &&
                     serverRepository.currentUser?.id == user?.id && serverRepository.currentServer?.id == serverId

@@ -1,8 +1,11 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.cards
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +80,9 @@ fun GridCard(
             onClick = onClick,
             onLongClick = onLongClick,
             interactionSource = interactionSource,
+            border = if (LocalLunocoContentStyle.current) {
+                CardDefaults.border(focusedBorder = LunocoContentStyle.FocusBorder)
+            } else CardDefaults.border(),
             colors =
                 CardDefaults.colors(
                     containerColor = Color.Transparent,
@@ -124,6 +130,7 @@ fun GridCard(
                     maxLines = 1,
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodySmall,
+                    color = if (LocalLunocoContentStyle.current) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
                     fontWeight = FontWeight.Normal,
                     modifier =
                         Modifier

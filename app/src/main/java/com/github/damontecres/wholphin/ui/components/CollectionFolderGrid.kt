@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
@@ -23,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -266,7 +266,7 @@ fun GridTitle(
         lineHeight = 34.sp,
         fontWeight = FontWeight.SemiBold,
     ),
-    color = Color(0xFFEAF0F6),
+    color = MaterialTheme.colorScheme.onSurface,
     textAlign = TextAlign.Start,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,

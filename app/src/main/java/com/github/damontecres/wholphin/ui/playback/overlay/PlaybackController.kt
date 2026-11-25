@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.playback.overlay
 
 import androidx.compose.animation.core.Spring
@@ -64,6 +65,7 @@ fun PlaybackController(
     onChangeState: (OverlayViewState) -> Unit,
     modifier: Modifier = Modifier,
     seekBarInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    scrubPositionMs: Long? = null,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -85,6 +87,7 @@ fun PlaybackController(
             onClickPlaybackDialogType = onClickPlaybackDialogType,
             onSeekProgress = onSeekBarChange,
             seekBarInteractionSource = seekBarInteractionSource,
+            scrubPositionMs = scrubPositionMs,
             currentSegment = currentSegment,
             modifier = Modifier,
         )
@@ -149,6 +152,7 @@ fun Controller(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     seekBarInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    scrubPositionMs: Long? = null,
 ) {
     val seekBarFocused by seekBarInteractionSource.collectIsFocusedAsState()
     val verticalOffset by animateDpAsState(
@@ -237,6 +241,7 @@ fun Controller(
             nextEnabled = nextEnabled,
             seekEnabled = seekEnabled,
             seekBarInteractionSource = seekBarInteractionSource,
+            scrubPositionMs = scrubPositionMs,
             seekBarIntervals = 16,
             seekBack = seekBack,
             seekForward = seekForward,

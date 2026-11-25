@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.detail.livetv
 
 import android.text.format.DateUtils
@@ -32,6 +33,8 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.tv.material3.surfaceColorAtElevation
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.ui.components.CircularProgress
@@ -59,12 +62,13 @@ fun ProgramDialog(
         onDismissRequest = onDismissRequest,
     ) {
         val focusRequester = remember { FocusRequester() }
+        val neutral = LocalLunocoContentStyle.current
         Box(
             modifier =
                 Modifier
                     .background(
-                        MaterialTheme.colorScheme.surfaceColorAtElevation(5.dp),
-                        shape = RoundedCornerShape(16.dp),
+                        if (neutral) LunocoContentStyle.Panel else MaterialTheme.colorScheme.surfaceColorAtElevation(5.dp),
+                        shape = if (neutral) LunocoContentStyle.DialogShape else RoundedCornerShape(16.dp),
                     ).focusRequester(focusRequester),
         ) {
             Column(

@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.nav
 
 import androidx.activity.compose.BackHandler
@@ -15,13 +16,18 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import com.github.damontecres.wholphin.ui.main.LocalHomeNavigationInset
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoGlassBackdrop
+import com.github.damontecres.wholphin.ui.theme.LunocoGlassScene
 import androidx.compose.ui.focus.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
+import java.util.UUID
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,6 +60,7 @@ fun JellyLuBrowseShell(
         (state.items + state.moreItems + NavDrawerItem.Favorites)
             .filter { it !is NavDrawerItem.More }.distinctBy { it.id }
     }
+    val glassBackdrop = remember(server.id, user.id) { LunocoGlassScene() }
     val homeFocus = remember(user.id) { FocusRequester() }
     val contentFocus = remember(destination) { FocusRequester() }
     var navigationFocused by remember { mutableStateOf(false) }
@@ -76,80 +83,43 @@ fun JellyLuBrowseShell(
     JellyLuHomeBackFocus(destination is Destination.Home && !navigationFocused && !profileMenu, homeFocus)
 
     CompositionLocalProvider(
+        LocalLunocoGlassBackdrop provides glassBackdrop.takeIf { destination is Destination.Home },
         LocalJellyLuHomeCards provides (destination is Destination.Home),
+        LocalHomeNavigationInset provides if (destination is Destination.Home) 56.dp else 0.dp,
         // Retained local name for source compatibility; it now points to top navigation.
         LocalJellyLuRailFocus provides homeFocus,
         LocalJellyLuNavigationHasFocus provides navigationHasFocus,
     ) {
-        Column(modifier.fillMaxSize()) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().height(56.dp)
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(horizontal = 20.dp)
-                    .onFocusChanged { navigationFocused = it.hasFocus }
-                    .focusGroup(),
-            ) {
-                BrowseButton(onClick = { profileMenu = true }, modifier = Modifier.width(126.dp)) {
-                    Image(
-                        painterResource(R.drawable.lunoco_wordmark),
-                        stringResource(R.string.brand_name),
-                        Modifier.width(96.dp).height(26.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Default.ArrowDropDown, stringResource(R.string.profile), Modifier.size(12.dp))
-                }
-                BrowseButton(
-                    onClick = {
-                        viewModel.navigationManager.selectHome()
-                    },
-                    selected = destination is Destination.Home,
-                    modifier = Modifier.widthIn(min = JellyLuBrowseTab.HOME.widthDp.dp).focusRequester(homeFocus),
-                ) { Icon(Icons.Default.Home, stringResource(R.string.home), Modifier.size(22.dp)) }
-                val groups = remember(links) { lunocoBrowseGroups(links) }
-                groups.forEach { group ->
-                    key(group.tab) {
-                        val openLink: (Int) -> Unit = { index ->
-                            val link = group.children[index]
-                            if (destination == link.destination) contentFocus.tryRequestFocus()
-                            else viewModel.navigationManager.navigateToFromDrawer(link.destination)
-                        }
-                        if (group.hasMenu) {
-                            BrowseDropdown(
-                                label = stringResource(group.tab.label),
-                                choices = group.children.map {
-                                    stringResource(if (it.tab == JellyLuBrowseTab.LIVE_TV) R.string.lunoco_guide else it.tab.label)
-                                },
-                                selectedIndex = group.children.indexOfFirst { selectedLibraryId == it.library.itemId },
-                                onSelect = openLink,
-                            )
-                        } else {
-                            val link = group.children.single()
-                            BrowseButton(
-                                onClick = { openLink(0) },
-                                selected = selectedLibraryId == link.library.itemId,
-                                modifier = Modifier.widthIn(min = group.tab.widthDp.dp),
-                            ) { Text(stringResource(group.tab.label), fontSize = 15.sp, maxLines = 1) }
-                        }
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                BrowseButton({
-                    viewModel.navigationManager.navigateToFromDrawer(Destination.Search())
-                }, selected = destination is Destination.Search, modifier = Modifier.width(34.dp)) {
-                    Icon(Icons.Default.Search, stringResource(R.string.search), Modifier.size(20.dp))
-                }
-                BrowseButton({
+        Box(modifier.fillMaxSize()) {
+            // Keep the same navigation instance/focus order, but draw it above Home's hero.
+            Box(Modifier.zIndex(1f)) {
+            LunocoTopNavigation(
+                destination = destination,
+                groups = remember(links) { lunocoBrowseGroups(links) },
+                selectedLibraryId = selectedLibraryId,
+                homeFocus = homeFocus,
+                onProfile = { profileMenu = true },
+                onHome = { viewModel.navigationManager.selectHome() },
+                onOpenLink = { link ->
+                    if (destination == link.destination) contentFocus.tryRequestFocus()
+                    else viewModel.navigationManager.navigateToFromDrawer(link.destination)
+                },
+                onSearch = { viewModel.navigationManager.navigateToFromDrawer(Destination.Search()) },
+                onSettings = {
                     if (destination !is Destination.Settings) {
                         viewModel.navigationManager.navigateTo(Destination.Settings(PreferenceScreenOption.BASIC))
                     }
-                }, selected = destination is Destination.Settings, modifier = Modifier.width(34.dp)) {
-                    Icon(Icons.Default.Settings, stringResource(R.string.settings), Modifier.size(20.dp))
-                }
+                },
+                onNavigationFocus = { navigationFocused = it },
+                downFocus = contentFocus.takeIf { destination is Destination.Home },
+            )
             }
             Box(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = if (destination is Destination.Home) 0.dp else 24.dp)
+                Modifier.fillMaxSize().padding(
+                    top = if (destination is Destination.Home) 0.dp else 56.dp,
+                    start = if (destination is Destination.Home) 0.dp else 24.dp,
+                    end = if (destination is Destination.Home) 0.dp else 24.dp,
+                )
                     .focusRestorer().focusRequester(contentFocus).focusGroup(),
             ) {
                 DestinationContent(destination, preferences, onClearBackdrop, Modifier.fillMaxSize())
@@ -188,32 +158,79 @@ fun JellyLuBrowseShell(
     }
 }
 
+/** Existing destinations/callbacks, presented by the shared lightweight floating lane. */
+@Composable
+internal fun LunocoTopNavigation(
+    destination: Destination,
+    groups: List<LunocoBrowseGroup>,
+    selectedLibraryId: UUID?,
+    homeFocus: FocusRequester,
+    onProfile: () -> Unit,
+    onHome: () -> Unit,
+    onOpenLink: (JellyLuBrowseLink) -> Unit,
+    onSearch: () -> Unit,
+    onSettings: () -> Unit,
+    onNavigationFocus: (Boolean) -> Unit,
+    downFocus: FocusRequester? = null,
+) {
+    // Global destinations must not also select a library merely retained below them.
+    val activeLibraryId = selectedLibraryId.takeUnless {
+        destination is Destination.Home || destination is Destination.Search || destination is Destination.Settings
+    }
+    CompositionLocalProvider(LocalFloatingNavigationDown provides downFocus) {
+    FloatingNavigationRow(onNavigationFocus) {
+        val compact = LocalFloatingNavigationCompact.current
+        BrowseButton(onProfile, Modifier.width(if (compact) 108.dp else 132.dp)) {
+            Image(painterResource(R.drawable.lunoco_wordmark), stringResource(R.string.brand_name),
+                Modifier.width(if (compact) 76.dp else 96.dp).height(26.dp))
+            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Default.ArrowDropDown, stringResource(R.string.profile), Modifier.size(12.dp))
+        }
+        BrowseButton(onHome, selected = destination is Destination.Home,
+            modifier = Modifier.width(if (compact) 40.dp else 48.dp).focusRequester(homeFocus)) {
+            Icon(Icons.Default.Home, stringResource(R.string.home), Modifier.size(22.dp))
+        }
+        groups.forEach { group ->
+            key(group.tab) {
+                if (group.hasMenu) {
+                    BrowseDropdown(
+                        label = stringResource(group.tab.label),
+                        choices = group.children.map {
+                            stringResource(if (it.tab == JellyLuBrowseTab.LIVE_TV) R.string.lunoco_guide else it.tab.label)
+                        },
+                        selectedIndex = group.children.indexOfFirst { activeLibraryId == it.library.itemId },
+                        onSelect = { onOpenLink(group.children[it]) },
+                    )
+                } else {
+                    val link = group.children.single()
+                    BrowseButton({ onOpenLink(link) },
+                        selected = activeLibraryId == link.library.itemId,
+                        modifier = Modifier.widthIn(min = group.tab.widthDp.dp)) {
+                        Text(stringResource(group.tab.label), fontSize = if (compact) 14.sp else 15.sp,
+                            lineHeight = if (compact) 18.sp else 20.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 180.dp))
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        BrowseButton(onSearch, selected = destination is Destination.Search,
+            modifier = Modifier.width(40.dp)) {
+            Icon(Icons.Default.Search, stringResource(R.string.search), Modifier.size(20.dp))
+        }
+        BrowseButton(onSettings, selected = destination is Destination.Settings,
+            modifier = Modifier.width(40.dp)) {
+            Icon(Icons.Default.Settings, stringResource(R.string.settings), Modifier.size(20.dp))
+        }
+    }
+    }
+}
+
 /** Shared with the Home focus test; preserves the existing Back-to-navigation behavior. */
 @Composable
 internal fun JellyLuHomeBackFocus(enabled: Boolean, homeFocus: FocusRequester) {
     BackHandler(enabled = enabled) { homeFocus.tryRequestFocus() }
-}
-
-@Composable
-private fun BrowseButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    selected: Boolean = false,
-    content: @Composable RowScope.() -> Unit,
-) {
-    Button(
-        onClick = onClick,
-        scale = ButtonDefaults.scale(focusedScale = 1f),
-        colors = ButtonDefaults.colors(
-            containerColor = Color.Transparent,
-            contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            focusedContentColor = MaterialTheme.colorScheme.primary,
-        ),
-        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-        modifier = modifier.height(34.dp),
-        content = content,
-    )
 }
 
 @Composable

@@ -1,6 +1,8 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.nav
 
 import androidx.compose.runtime.Composable
+import com.github.damontecres.wholphin.ui.theme.LunocoContentTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.tv.material3.MaterialTheme
@@ -65,6 +67,22 @@ fun DestinationContent(
     preferences: UserPreferences,
     onClearBackdrop: () -> Unit,
     modifier: Modifier = Modifier,
+) {
+    if (destination is Destination.Home) {
+        RoutedDestinationContent(destination, preferences, onClearBackdrop, modifier)
+    } else {
+        LunocoContentTheme {
+            RoutedDestinationContent(destination, preferences, onClearBackdrop, modifier)
+        }
+    }
+}
+
+@Composable
+private fun RoutedDestinationContent(
+    destination: Destination,
+    preferences: UserPreferences,
+    onClearBackdrop: () -> Unit,
+    modifier: Modifier,
 ) {
     if (destination.fullScreen) {
         LaunchedEffect(Unit) { onClearBackdrop.invoke() }

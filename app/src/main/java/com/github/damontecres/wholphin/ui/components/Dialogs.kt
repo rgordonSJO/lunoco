@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.components
 
 import android.content.res.Resources
@@ -61,6 +62,8 @@ import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.tv.material3.surfaceColorAtElevation
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.TrackIndex
 import com.github.damontecres.wholphin.preferences.lazyListWrapScrolling
@@ -231,8 +234,10 @@ fun DialogPopup(
             onDismissRequest = onDismissRequest,
             properties = properties,
         ) {
-            val elevatedContainerColor =
-                MaterialTheme.colorScheme.surfaceColorAtElevation(elevation)
+            val neutral = LocalLunocoContentStyle.current
+            val dialogShape = if (neutral) LunocoContentStyle.DialogShape else RoundedCornerShape(28.dp)
+            val elevatedContainerColor = if (neutral) LunocoContentStyle.Panel
+                else MaterialTheme.colorScheme.surfaceColorAtElevation(elevation)
             DialogPopupContent(
                 title = title,
                 dialogItems = dialogItems,
@@ -254,10 +259,10 @@ fun DialogPopup(
                                 waiting = false
                             }
                             false
-                        }.shadow(elevation = elevation, shape = RoundedCornerShape(28.0.dp))
+                        }.shadow(elevation = elevation, shape = dialogShape)
                         .graphicsLayer {
                             this.clip = true
-                            this.shape = RoundedCornerShape(28.0.dp)
+                            this.shape = dialogShape
                         }.drawBehind { drawRect(color = elevatedContainerColor) }
                         .padding(PaddingValues(24.dp)),
             )
@@ -378,6 +383,8 @@ fun ScrollableDialog(
                 usePlatformDefaultWidth = false,
             ),
     ) {
+        val neutral = LocalLunocoContentStyle.current
+        val dialogShape = if (neutral) LunocoContentStyle.DialogShape else RoundedCornerShape(8.dp)
         LazyColumn(
             state = columnState,
             contentPadding = PaddingValues(16.dp),
@@ -388,10 +395,10 @@ fun ScrollableDialog(
                     .width(width)
                     .heightIn(max = maxHeight)
                     .focusable()
-                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(8.dp))
+                    .shadow(elevation = 8.dp, shape = dialogShape)
                     .background(
-                        MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        if (neutral) LunocoContentStyle.Panel else MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                        shape = dialogShape,
                     ).onKeyEvent {
                         if (it.type == KeyEventType.KeyUp) {
                             return@onKeyEvent false
@@ -424,13 +431,15 @@ fun BasicDialog(
         onDismissRequest = onDismissRequest,
         properties = properties,
     ) {
+        val neutral = LocalLunocoContentStyle.current
+        val dialogShape = if (neutral) LunocoContentStyle.DialogShape else RoundedCornerShape(8.dp)
         Box(
             modifier =
                 Modifier
-                    .shadow(elevation = elevation, shape = RoundedCornerShape(8.dp))
+                    .shadow(elevation = elevation, shape = dialogShape)
                     .background(
-                        MaterialTheme.colorScheme.surfaceColorAtElevation(elevation),
-                        shape = RoundedCornerShape(8.dp),
+                        if (neutral) LunocoContentStyle.Panel else MaterialTheme.colorScheme.surfaceColorAtElevation(elevation),
+                        shape = dialogShape,
                     ),
         ) {
             content()

@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.cards
 
 import androidx.compose.animation.core.animateDpAsState
@@ -27,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -162,6 +165,9 @@ fun SeasonCard(
             onClick = onClick,
             onLongClick = onLongClick,
             interactionSource = interactionSource,
+            border = if (LocalLunocoContentStyle.current) {
+                CardDefaults.border(focusedBorder = LunocoContentStyle.FocusBorder)
+            } else CardDefaults.border(),
             colors =
                 CardDefaults.colors(
                     containerColor = Color.Transparent,

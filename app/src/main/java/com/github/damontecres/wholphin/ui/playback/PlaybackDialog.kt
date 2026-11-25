@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.playback
 
 import android.view.Gravity
@@ -40,6 +41,8 @@ import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.tv.material3.surfaceColorAtElevation
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.TrackIndex
 import com.github.damontecres.wholphin.preferences.AppPreference
@@ -353,8 +356,9 @@ fun SubtitleChoiceBottomDialog(
                     .wrapContentSize()
                     .padding(8.dp)
                     .background(
-                        MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        if (LocalLunocoContentStyle.current) LunocoContentStyle.Panel
+                        else MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                        shape = if (LocalLunocoContentStyle.current) LunocoContentStyle.DialogShape else RoundedCornerShape(8.dp),
                     ),
         ) {
             LazyColumn(
@@ -511,8 +515,9 @@ fun StreamChoiceBottomDialog(
                     .wrapContentSize()
                     .padding(8.dp)
                     .background(
-                        MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        if (LocalLunocoContentStyle.current) LunocoContentStyle.Panel
+                        else MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                        shape = if (LocalLunocoContentStyle.current) LunocoContentStyle.DialogShape else RoundedCornerShape(8.dp),
                     ),
         ) {
             LazyColumn(

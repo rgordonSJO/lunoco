@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.playback
 
 import android.view.Gravity
@@ -15,6 +16,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -29,6 +32,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,14 +48,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -59,7 +69,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.children
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.PlayerSurface
@@ -69,6 +85,7 @@ import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.surfaceColorAtElevation
+import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.mpv.MpvPlayer
 import com.github.damontecres.wholphin.preferences.AssPlaybackMode
 import com.github.damontecres.wholphin.preferences.DpadSeekMode
@@ -99,6 +116,7 @@ import com.github.damontecres.wholphin.util.Media3SubtitleOverride
 import io.github.peerless2012.ass.media.widget.AssSubtitleView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.extensions.ticks
 import timber.log.Timber
 import kotlin.time.Duration
@@ -245,7 +263,7 @@ fun PlaybackPageContent(
         seekBarState.onValueChange(skipPosition)
     }
     val keyHandler =
-        remember(preferences) {
+        remember(player, preferences, state.nextUp == null) {
             PlaybackKeyHandler(
                 player = player,
                 controlsEnabled = state.nextUp == null,
@@ -329,8 +347,76 @@ fun PlaybackPageContent(
         }
     }
 
+    val media = state.currentPlayback
+    val trickplayInfo = state.currentMediaInfo.trickPlayInfo
+    val trickplayUrlFor: (Int) -> String? = remember(viewModel, player, media?.itemId, media?.sourceId, media?.playSessionId, trickplayInfo) {
+        val itemId = media?.itemId
+        val sourceId = media?.sourceId
+        val urlFor: (Int) -> String? = { index ->
+            if (itemId != null && trickplayInfo != null) viewModel.getTrickplayUrl(index, itemId, sourceId, trickplayInfo)
+            else null
+        }
+        urlFor
+    }
+    val instantScrubEnabled = state.currentMediaInfo.videoStream != null && media?.liveStreamId == null &&
+        when (media?.item?.type) {
+            BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO, BaseItemKind.PROGRAM -> true
+            else -> false
+        }
+    val scrub = remember(player, media?.itemId, media?.sourceId, media?.playSessionId, prefs.skipBackMs, prefs.skipForwardMs) {
+        InstantDpadScrub(prefs.skipBackMs, prefs.skipForwardMs)
+    }
+    val seekBarInteraction = remember { MutableInteractionSource() }
+    val timelineFocused by seekBarInteraction.collectIsFocusedAsState()
+    val preview = scrub.preview
+    val previewPresentation = remember(scrub) { ScrubPresentation() }
+    val context = LocalContext.current
+    val windowInfo = LocalWindowInfo.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val menuOpen = playbackDialog != null || subtitleSearchState.status != SubtitleSearchStatus.Inactive
+    val scrubOwner = when {
+        !instantScrubEnabled || state.nextUp != null || menuOpen || !windowInfo.isWindowFocused -> null
+        !controllerViewState.controlsVisible -> ScrubOwner.VIDEO
+        timelineFocused -> ScrubOwner.TIMELINE
+        else -> null
+    }
+    val displayedPreview = previewPresentation.frame(preview, scrubOwner)
+    TrackScrubPresentation(previewPresentation) { playbackState == PlayerState.BUFFERING }
+    LaunchedEffect(scrub, scrubOwner, playbackState) {
+        val frame = scrub.preview ?: previewPresentation.release?.frame
+        if (frame?.owner != scrubOwner || player.scrubDuration() == null) {
+            scrub.cancel()
+            previewPresentation.clear()
+        }
+    }
+    LifecycleResumeEffect(scrub) {
+        onPauseOrDispose {
+            scrub.cancel()
+            previewPresentation.clear()
+        }
+    }
+    DisposableEffect(player, scrub) {
+        val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                scrub.cancel()
+                previewPresentation.clear()
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                scrub.cancel()
+                previewPresentation.clear()
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            scrub.cancel()
+            previewPresentation.clear()
+        }
+    }
+    TrackInstantDpadHold(scrub, scrubOwner, player)
+
     val showSegment =
-        state.currentSegment?.interacted == false &&
+        displayedPreview == null && state.currentSegment?.interacted == false &&
             state.nextUp == null && !controllerViewState.controlsVisible && skipIndicatorDuration == 0L
     BackHandler(showSegment) {
         viewModel.updateSegment(state.currentSegment?.segment?.id, true)
@@ -346,7 +432,26 @@ fun PlaybackPageContent(
                 Modifier
                     .fillMaxSize(playerSize)
                     .align(Alignment.TopCenter)
+                    .onPreviewKeyEvent { event ->
+                        val owner = scrubOwner.takeIf { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+                        val consumed = previewPresentation.onKeyEvent(scrub, event, owner, player) {
+                            Timber.e(it, "Could not seek on D-pad release")
+                            android.widget.Toast.makeText(
+                                context, R.string.lunoco_seek_failed, android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        if (scrub.preview != null) skipIndicatorDuration = 0L
+                        if (consumed && owner == ScrubOwner.TIMELINE) controllerViewState.pulseControls()
+                        if (consumed && event.type == KeyEventType.KeyUp) viewModel.reportInteraction()
+                        consumed
+                    }
                     .onKeyEvent(keyHandler::onKeyEvent)
+                    .onFocusChanged {
+                        if (!it.hasFocus) {
+                            scrub.cancel()
+                            previewPresentation.clear()
+                        }
+                    }
                     .focusRequester(focusRequester)
                     .focusable(),
         ) {
@@ -384,7 +489,21 @@ fun PlaybackPageContent(
                 }
             }
 
-            AnimatedVisibility(
+            if (displayedPreview?.owner == ScrubOwner.VIDEO) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    DpadSeekOverlay(
+                        player = player,
+                        seekPositionMs = displayedPreview.targetMs,
+                        trickplayInfo = state.currentMediaInfo.trickPlayInfo,
+                        trickplayUrlFor = trickplayUrlFor,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp).fillMaxWidth(.95f)
+                            .graphicsLayer { alpha = previewPresentation.alpha },
+                        direction = displayedPreview.direction,
+                    )
+                }
+            }
+
+            if (displayedPreview == null) AnimatedVisibility(
                 visible =
                     !controllerViewState.controlsVisible &&
                         skipIndicatorDuration != 0L &&
@@ -400,7 +519,7 @@ fun PlaybackPageContent(
                         player = player,
                         seekPositionMs = skipPosition,
                         trickplayInfo = state.currentMediaInfo.trickPlayInfo,
-                        trickplayUrlFor = viewModel::getTrickplayUrl,
+                        trickplayUrlFor = trickplayUrlFor,
                         modifier =
                             Modifier
                                 .align(Alignment.BottomCenter)
@@ -416,7 +535,7 @@ fun PlaybackPageContent(
             }
 
             // If D-pad skipping, show the amount skipped in an animation
-            if (!controllerViewState.controlsVisible && skipIndicatorDuration != 0L &&
+            if (displayedPreview == null && !controllerViewState.controlsVisible && skipIndicatorDuration != 0L &&
                 prefs.dpadSeekMode != DpadSeekMode.SEEKBAR_TRICKPLAY
             ) {
                 // Skip time mode: show seek distance indicator
@@ -459,7 +578,7 @@ fun PlaybackPageContent(
                         playbackDialog != null ||
                         subtitleSearchState.status != SubtitleSearchStatus.Inactive
                 }
-            if (!controlsVisible && skipIndicatorDuration == 0L) {
+            if (displayedPreview == null && !controlsVisible && skipIndicatorDuration == 0L) {
                 PauseIndicator(
                     player = player,
                     modifier =
@@ -493,12 +612,16 @@ fun PlaybackPageContent(
                 currentPlayback = state.currentPlayback,
                 chapters = state.currentMediaInfo.chapters,
                 trickplayInfo = state.currentMediaInfo.trickPlayInfo,
-                trickplayUrlFor = viewModel::getTrickplayUrl,
+                trickplayUrlFor = trickplayUrlFor,
                 queue = remember(state.playlistIndex, state.playlist) { state.upcomingItems },
                 onClickPlaylist = viewModel::playItemInPlaylist,
                 currentSegment = state.currentSegment?.segment,
                 showClock = preferences.appPreferences.interfacePreferences.showClock,
                 analyticsState = state.analyticsState,
+                seekBarInteractionSource = seekBarInteraction,
+                instantTimeline = instantScrubEnabled,
+                scrubPositionMs = displayedPreview?.takeIf { it.owner == ScrubOwner.TIMELINE }?.targetMs,
+                scrubPreviewAlpha = { previewPresentation.alpha },
             )
 
             var subtitleStyleAppliedForHdr by remember { mutableStateOf(state.currentMediaInfo.videoStream?.hdr == true) }
@@ -700,6 +823,8 @@ fun PlaybackPageContent(
             }
         }
     }
+
+    BackHandler(preview != null) { scrub.cancel() }
 
     if (subtitleSearchState.status != SubtitleSearchStatus.Inactive) {
         val wasPlaying = remember { player.isPlaying }

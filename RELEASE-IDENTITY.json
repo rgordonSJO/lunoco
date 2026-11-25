@@ -1,12 +1,14 @@
 {
-  "release": "v0.10.2",
-  "title": "Lunoco 10B.2 — Navigation & Discovery",
-  "developmentSourceCommit": "7268ce4a1a0b62b4d9a1fc152159ae4e2693d786",
+  "release": "v0.11.0",
+  "title": "Lunoco v0.11.0 — Jellyfin for Google TV",
   "asset": "Lunoco.apk",
-  "sha256": "827705edde6e96dea712436d42351ef54175d495b666c73afc93cd4eaebd1d92",
+  "sha256": "732bed5227be82e2d637f88840728bd27cd6d7cbd5ad2212a74404b65255afce",
+  "bytes": 30016535,
   "package": "com.ryan.lunatv.jellyfin.performance",
-  "versionName": "0.0.0-local-perf-lunoco-navigation-10b2",
-  "versionCode": 1,
+  "versionName": "0.11.0",
+  "versionCode": 4,
   "signerSHA256": "57a0d2a501b9a679311a88aad8d9b41a1b605119ce2cf638694dae2563cf1045",
+  "correspondingSourceSHA256": "1afdf28d9ac66613bff296f359c6bd7d56419f8c8293bb4a6cd094ed88d8c28b",
+  "nativeNoticesSHA256": "ce5f444ffecc910e2bc6b70fa09096aa812c5f60bdb99032881dcbf046b3790e",
   "rebuiltForPublication": false
 }

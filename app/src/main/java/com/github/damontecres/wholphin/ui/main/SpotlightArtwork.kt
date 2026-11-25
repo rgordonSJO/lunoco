@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import androidx.compose.animation.core.Animatable
@@ -7,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,17 +46,30 @@ internal fun rememberSpotlightFrame(
     val context = LocalContext.current
     val loader = LocalSpotlightImageLoader.current ?: SingletonImageLoader.get(context)
     return produceState(SpotlightFrame(movie, null), movie, request, loader) {
-        // Re-entering controls can cancel an unseen pending page. Reuse the complete visible
+        // Activating a control can cancel an unseen pending page. Reuse the complete visible
         // frame, including a resolved fallback, without another cache lookup or network request.
         if (value.ready && value.movie == movie) return@produceState
         val painter = request.let {
-            (loader.execute(it) as? SuccessResult)?.image?.asPainter(context)
+            (loader.execute(it) as? SuccessResult)?.image
+                // A wrongly tagged portrait is not a cinematic backdrop. Keep the existing fallback.
+                ?.takeIf { image -> image.height > 0 && image.width >= image.height }
+                ?.asPainter(context)
         }
         value = SpotlightFrame(movie, painter, ready = true)
     }
 }
 
+/** Fraction before the height-fitted artwork begins; no bitmap processing or state reads. */
+internal fun spotlightArtworkStartFraction(painter: Painter?, viewport: Size): Float {
+    val source = painter?.intrinsicSize ?: return 0f
+    if (!source.width.isFinite() || !source.height.isFinite() || source.width <= 0f ||
+        source.height <= 0f || viewport.width <= 0f || viewport.height <= 0f) return 0f
+    val scale = minOf(viewport.width / source.width, viewport.height / source.height)
+    return (1f - source.width * scale / viewport.width).coerceIn(0f, 1f)
+}
+
 /**
+ * Fit the original landscape composition instead of cropping it to the very wide banner.
  * Two image draws at most; only the incoming image fades. Keeping the outgoing image opaque
  * avoids Crossfade's dark midpoint. ModulateAlpha applies alpha to this single image draw
  * instead of requesting a full-banner offscreen compositing buffer.
@@ -80,10 +95,10 @@ internal fun SpotlightArtwork(
     }
     Box(modifier.background(background)) {
         outgoing?.let {
-            Image(it, null, contentScale = ContentScale.Crop, alignment = Alignment.CenterEnd,
+            Image(it, null, contentScale = ContentScale.Fit, alignment = Alignment.CenterEnd,
                 modifier = Modifier.fillMaxSize())
         }
-        Image(target, null, contentScale = ContentScale.Crop, alignment = Alignment.CenterEnd,
+        Image(target, null, contentScale = ContentScale.Fit, alignment = Alignment.CenterEnd,
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 alpha = if (outgoing == null) 1f else opacity.value
                 // Vector/drawable painters may overlap internally; preserve group alpha for those.

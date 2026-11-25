@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -71,7 +72,7 @@ class RecentTvNavigationTest {
         val oldPayload = json.encodeToString(Destination.serializer(), normal)
         assertFalse(oldPayload.contains("recentEpisode"))
         assertEquals(normal, json.decodeFromString(Destination.serializer(), oldPayload))
-        // Old serialized targeted routes still decode; new Home activations no longer create them.
+        // The pure route stays untargeted; Recently Added activation attaches an explicit target.
         val targeted = normal.copy(recentEpisode = com.github.damontecres.wholphin.ui.detail.series.SeasonEpisodeIds(
             UUID(9, 1), 3, UUID(9, 7), 7))
         assertEquals(targeted, json.decodeFromString(Destination.serializer(), json.encodeToString(Destination.serializer(), targeted)))

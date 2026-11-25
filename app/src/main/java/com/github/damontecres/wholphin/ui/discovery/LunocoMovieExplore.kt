@@ -1,5 +1,7 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.discovery
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
@@ -32,11 +34,15 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.tv.material3.*
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.github.damontecres.wholphin.R
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.colors.LunocoUiColors
 import com.github.damontecres.wholphin.ui.LocalImageUrlService
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import java.util.UUID
@@ -50,6 +56,8 @@ internal fun LunocoMoviesWorkspace(
 ) {
     val allMoviesFocus = remember(library) { FocusRequester() }
     var explore by rememberSaveable(library) { mutableStateOf(false) }
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    BackHandler(explore && lifecycleState == Lifecycle.State.RESUMED) { explore = false }
     var gridAtTop by rememberSaveable(library) { mutableStateOf(true) }
     val onGridPosition = remember(library) { { columns: Int, position: Int -> gridAtTop = position < columns } }
     Column(modifier) {
@@ -69,8 +77,14 @@ private fun MovieModeButton(label: String, active: Boolean, tag: String, modifie
     Button(onClick, modifier = modifier.height(34.dp).testTag(tag).semantics { selected = active },
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         scale = ButtonDefaults.scale(focusedScale = 1f),
-        colors = ButtonDefaults.colors(containerColor = if (active) Color(0xFF142132) else Color.Transparent,
-            contentColor = if (active) Color(0xFF70B8FF) else Color(0xFFEAF0F6))) {
+        border = ButtonDefaults.border(focusedBorder = LunocoContentStyle.FocusBorder),
+        colors = ButtonDefaults.colors(
+            containerColor = if (active) LunocoContentStyle.Selected else Color.Transparent,
+            contentColor = LunocoContentStyle.Ivory,
+            focusedContainerColor = LunocoContentStyle.Focused,
+            focusedContentColor = LunocoContentStyle.Ivory,
+        ),
+    ) {
         Text(label, fontSize = 15.sp)
     }
 }
@@ -184,6 +198,11 @@ private fun MovieExploreScopedContent(state: MovieExploreState, onOpen: (MovieFa
 
 @Composable
 internal fun MovieFacetCard(facet: MovieFacet, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val neutral = LocalLunocoContentStyle.current
+    val body = if (neutral) LunocoContentStyle.Panel else Color(0xFF142132)
+    val text = if (neutral) LunocoContentStyle.Ivory else Color(0xFFEAF0F6)
+    val focusOutline = if (neutral) LunocoUiColors.NavigationFocusOutline else Color(0xFF85C3FF)
+    val scrim = if (neutral) Color.Black.copy(alpha = .9f) else Color(0xE6101826)
     val studio = facet.kind == MovieFacetKind.STUDIO
     val width = if (studio) 224.dp else 196.dp
     val height = if (studio) 120.dp else 110.dp
@@ -199,12 +218,12 @@ internal fun MovieFacetCard(facet: MovieFacet, onClick: () -> Unit, modifier: Mo
     val request = remember(url, context) { url?.let { ImageRequest.Builder(context).data(it).size(448, 240).build() } }
     Surface(onClick = onClick, modifier = modifier.size(width, height)
         .testTag("explore-${facet.key}").onFocusChanged { focused = it.isFocused }
-        .border(if (focused) 2.dp else 0.dp, if (focused) Color(0xFF85C3FF) else Color.Transparent, shape),
+        .border(if (focused) 2.dp else 0.dp, if (focused) focusOutline else Color.Transparent, shape),
         shape = ClickableSurfaceDefaults.shape(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF142132),
-            focusedContainerColor = Color(0xFF142132), contentColor = Color(0xFFEAF0F6),
-            focusedContentColor = Color(0xFFEAF0F6))) {
+        colors = ClickableSurfaceDefaults.colors(containerColor = body,
+            focusedContainerColor = body, contentColor = text,
+            focusedContentColor = text)) {
         Box(Modifier.fillMaxSize().clip(shape)) {
             if (studio) {
                 if (request != null && !imageFailed) {
@@ -215,13 +234,13 @@ internal fun MovieFacetCard(facet: MovieFacet, onClick: () -> Unit, modifier: Mo
                             onError = { imageFailed = true },
                             modifier = Modifier.weight(1f).fillMaxWidth().testTag("studio-logo"))
                         Spacer(Modifier.height(6.dp))
-                        Text(facet.name, color = Color(0xFFEAF0F6), fontSize = 16.sp,
+                        Text(facet.name, color = text, fontSize = 16.sp,
                             lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
                             overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().testTag("studio-label"))
                     }
                 } else {
-                    Text(facet.name, color = Color(0xFFEAF0F6), fontSize = 21.sp,
+                    Text(facet.name, color = text, fontSize = 21.sp,
                         fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         modifier = Modifier.align(Alignment.Center).padding(14.dp).testTag("studio-label"))
@@ -230,8 +249,8 @@ internal fun MovieFacetCard(facet: MovieFacet, onClick: () -> Unit, modifier: Mo
                 if (request != null && !imageFailed) AsyncImage(request, contentDescription = null,
                     contentScale = ContentScale.Crop, onError = { imageFailed = true }, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-                    listOf(Color.Transparent, Color(0xE6101826)))))
-                Text(facet.name, color = Color(0xFFEAF0F6), fontSize = 17.sp,
+                    listOf(Color.Transparent, scrim))))
+                Text(facet.name, color = text, fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 14.dp, vertical = 10.dp))
             }

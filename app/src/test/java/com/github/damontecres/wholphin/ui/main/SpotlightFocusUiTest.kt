@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import android.app.Application
@@ -193,7 +194,7 @@ class SpotlightFocusUiTest {
         verify(exactly = 0) { viewModel.load(any()) }
     }
 
-    @Test fun enteringControlsCancelsUnseenAutomaticArtworkWithoutReloadingVisibleImage() {
+    @Test fun enteringControlsDoesNotCancelPendingAutomaticArtwork() {
         val a = first.copy(backdropImageTags = listOf("a"))
         val b = second.copy(backdropImageTags = listOf("b"))
         val loader = mockk<coil3.ImageLoader>()
@@ -212,10 +213,12 @@ class SpotlightFocusUiTest {
         compose.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionUp) }
         advanceRotationTime(100)
         compose.runOnIdle { pending.complete(mockk<coil3.request.ErrorResult>()) }
-        advanceRotationTime(11_000)
-        compose.onNodeWithText("Feature A").assertExists()
+        advanceRotationTime(100)
+        compose.onNodeWithText("Feature B").assertExists()
         compose.onNodeWithText("Play").assertIsFocused()
         coVerify(exactly = 2) { loader.execute(any()) }
+        verify(exactly = 0) { viewModel.play(any()) }
+        verify(exactly = 0) { viewModel.details(any()) }
         verify(exactly = 0) { viewModel.load(any()) }
     }
 
@@ -262,23 +265,24 @@ class SpotlightFocusUiTest {
         verify(exactly = 0) { viewModel.details(any()) }
     }
 
-    @Test fun spotlightControlFocusPausesAndLeavingRestartsAFullInterval() {
+    @Test fun playFocusKeepsRotatingAndActivationUsesVisibleMovie() {
         render()
         compose.mainClock.autoAdvance = false
-        advanceRotationTime(15_100)
-        compose.onNodeWithText("Feature A").assertIsDisplayed()
-        compose.onNodeWithText("Play").assertIsFocused()
-        compose.onNodeWithContentDescription("Next Spotlight movie").requestFocus()
-        compose.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionCenter) }
+        // render() has already delivered bootstrap frames before the clock is frozen.
+        // Interval boundaries are checked by the lifecycle/manual-reset tests.
         advanceRotationTime(10_100)
         compose.onNodeWithText("Feature B").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Next Spotlight movie").assertIsFocused()
-        compose.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionDown) }
-        advanceRotationTime(9_800)
-        compose.onNodeWithText("Feature B").assertExists()
-        advanceRotationTime(400)
-        compose.onNodeWithText("Feature A").assertExists()
-        compose.onNodeWithContentDescription("Resume movie").assertIsFocused()
+        compose.onNodeWithText("Play").assertIsFocused()
+        verify(exactly = 0) { viewModel.play(any()) }
+        verify(exactly = 0) { viewModel.details(any()) }
+        compose.onNodeWithText("Play").performKeyInput { pressKey(Key.DirectionCenter) }
+        verify(exactly = 1) { viewModel.play(second) }
+        advanceRotationTime(10_100)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.onNodeWithText("Play").assertIsFocused()
+        compose.onNodeWithText("Play").performKeyInput { pressKey(Key.DirectionCenter) }
+        verify(exactly = 1) { viewModel.play(first) }
+        verify(exactly = 0) { viewModel.load(any()) }
     }
 
     @Test fun manualPagingRestartsTheUnfocusedTimerAndActionsUseCurrentMovie() {
@@ -341,7 +345,7 @@ class SpotlightFocusUiTest {
         compose.onNodeWithContentDescription("Resume movie").assertIsFocused()
     }
 
-    @Test fun longDetailsVisitRetainsSelectedMovieAndDetailsFocus() {
+    @Test fun detailsVisitDisposesTimerAndReturnRestartsOneFreshInterval() {
         render()
         compose.onNodeWithContentDescription("Next Spotlight movie").requestFocus()
         compose.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionCenter) }
@@ -355,9 +359,16 @@ class SpotlightFocusUiTest {
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithText("Details").assertIsFocused()
         compose.mainClock.autoAdvance = false
-        advanceRotationTime(10_000)
+        advanceRotationTime(9_800)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        advanceRotationTime(400)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.onNodeWithText("Details").assertIsFocused()
+        advanceRotationTime(10_100)
         compose.onNodeWithText("Feature B").assertIsDisplayed()
         compose.onNodeWithText("Details").assertIsFocused()
+        verify(exactly = 1) { viewModel.details(second) }
+        verify(exactly = 0) { viewModel.play(any()) }
         verify(exactly = 0) { viewModel.load(any()) }
     }
 
@@ -389,6 +400,181 @@ class SpotlightFocusUiTest {
         compose.onNodeWithText("Play").assertDoesNotExist()
         verify(exactly = 0) { viewModel.load(any()) }
         verify(exactly = 0) { viewModel.play(any()) }
+    }
+
+    @Test fun detailsFocusKeepsRotatingAndActivationUsesVisibleMovie() {
+        render()
+        compose.onNodeWithText("Details").requestFocus()
+        val bounds = compose.onNodeWithText("Details").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        advanceRotationTime(10_100)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        compose.onNodeWithText("Details").assertIsFocused()
+        assertEquals(bounds, compose.onNodeWithText("Details").fetchSemanticsNode().boundsInRoot)
+        verify(exactly = 0) { viewModel.details(any()) }
+        compose.onNodeWithText("Details").performKeyInput { pressKey(Key.DirectionCenter) }
+        verify(exactly = 1) { viewModel.details(second) }
+        verify(exactly = 0) { viewModel.play(any()) }
+        // Deliver the navigation composition while the test clock is paused.
+        advanceRotationTime(100)
+        compose.onNodeWithText("Movie details destination").assertExists()
+    }
+
+    private fun assertRotationKeepsPagingControlFocus(description: String) {
+        render()
+        compose.onNodeWithContentDescription(description).requestFocus()
+        val bounds = compose.onNodeWithContentDescription(description).fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        advanceRotationTime(10_100)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        compose.onNodeWithContentDescription(description).assertIsFocused()
+        assertEquals(bounds, compose.onNodeWithContentDescription(description).fetchSemanticsNode().boundsInRoot)
+        advanceRotationTime(10_100)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.onNodeWithContentDescription(description).assertIsFocused()
+        verify(exactly = 0) { viewModel.play(any()) }
+        verify(exactly = 0) { viewModel.details(any()) }
+        verify(exactly = 0) { viewModel.load(any()) }
+    }
+
+    @Test fun previousFocusDoesNotPauseRotationOrMoveFocus() =
+        assertRotationKeepsPagingControlFocus("Previous Spotlight movie")
+
+    @Test fun nextFocusDoesNotPauseRotationOrMoveFocus() =
+        assertRotationKeepsPagingControlFocus("Next Spotlight movie")
+
+    @Test fun topNavigationFocusDoesNotRestartAnAlmostCompletedInterval() {
+        render()
+        compose.mainClock.autoAdvance = false
+        advanceRotationTime(9_000)
+        compose.onNodeWithText("Home navigation").requestFocus()
+        advanceRotationTime(1_100)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        compose.onNodeWithText("Home navigation").assertIsFocused()
+        advanceRotationTime(10_100)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.onNodeWithText("Home navigation").assertIsFocused()
+        verify(exactly = 0) { viewModel.load(any()) }
+        verify(exactly = 0) { viewModel.play(any()) }
+        verify(exactly = 0) { viewModel.details(any()) }
+    }
+
+    private fun assertFocusedManualPageRestartsInterval(description: String) {
+        render()
+        compose.onNodeWithContentDescription(description).requestFocus()
+        compose.mainClock.autoAdvance = false
+        advanceRotationTime(9_000)
+        compose.onNodeWithContentDescription(description).performKeyInput { pressKey(Key.DirectionCenter) }
+        advanceRotationTime(100)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        advanceRotationTime(9_800)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        advanceRotationTime(400)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.onNodeWithContentDescription(description).assertIsFocused()
+        verify(exactly = 0) { viewModel.play(any()) }
+        verify(exactly = 0) { viewModel.details(any()) }
+        verify(exactly = 0) { viewModel.load(any()) }
+    }
+
+    @Test fun focusedNextRestartsTheFullCountdown() =
+        assertFocusedManualPageRestartsInterval("Next Spotlight movie")
+
+    @Test fun focusedPreviousRestartsTheFullCountdown() =
+        assertFocusedManualPageRestartsInterval("Previous Spotlight movie")
+
+    @Test fun pendingAutomaticArtworkPlayUsesVisibleMovieAndCancelsUnseenPage() {
+        val a = first.copy(backdropImageTags = listOf("a"))
+        val b = second.copy(backdropImageTags = listOf("b"))
+        val loader = mockk<coil3.ImageLoader>()
+        val pending = kotlinx.coroutines.CompletableDeferred<coil3.request.ImageResult>()
+        var loads = 0
+        coEvery { loader.execute(any()) } coAnswers {
+            if (++loads == 1) mockk<coil3.request.ErrorResult>() else pending.await()
+        }
+        render(SpotlightState(scope = SpotlightScope(UUID(1, 1), UUID(2, 2), UUID(3, 3)),
+            movies = listOf(a, b)), artworkLoader = loader)
+        compose.mainClock.autoAdvance = false
+        advanceRotationTime(10_100)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.onNodeWithText("Play").assertIsFocused()
+        coVerify(exactly = 2) { loader.execute(any()) }
+        compose.onNodeWithText("Play").performKeyInput { pressKey(Key.DirectionCenter) }
+        verify(exactly = 1) { viewModel.play(a) }
+        verify(exactly = 0) { viewModel.play(b) }
+        // Deliver the selected-ID change/cancellation before resolving the old mock request.
+        advanceRotationTime(100)
+        compose.runOnIdle { pending.complete(mockk<coil3.request.ErrorResult>()) }
+        advanceRotationTime(100)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        coVerify(exactly = 2) { loader.execute(any()) }
+        verify(exactly = 0) { viewModel.load(any()) }
+    }
+
+    @Test fun inactiveRetainedHomeEntryDoesNotAdvanceUntilResumed() {
+        val owner = object : androidx.lifecycle.LifecycleOwner {
+            override val lifecycle = androidx.lifecycle.LifecycleRegistry.createUnsafe(this).apply {
+                currentState = androidx.lifecycle.Lifecycle.State.RESUMED
+            }
+        }
+        render(rotationLifecycle = owner)
+        compose.mainClock.autoAdvance = false
+        advanceRotationTime(9_000)
+        compose.runOnUiThread { owner.lifecycle.currentState = androidx.lifecycle.Lifecycle.State.STARTED }
+        advanceRotationTime(30_000)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.runOnUiThread { owner.lifecycle.currentState = androidx.lifecycle.Lifecycle.State.RESUMED }
+        advanceRotationTime(9_800)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        advanceRotationTime(400)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        compose.onNodeWithText("Play").assertIsFocused()
+        verify(exactly = 0) { viewModel.load(any()) }
+        verify(exactly = 0) { viewModel.play(any()) }
+        verify(exactly = 0) { viewModel.details(any()) }
+    }
+
+    @Test fun rapidManualRoundTripToSameIdRestartsTimerBeforeOldTick() {
+        render()
+        compose.onNodeWithContentDescription("Next Spotlight movie").requestFocus()
+        compose.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.onNodeWithContentDescription("Previous Spotlight movie").requestFocus()
+        compose.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        compose.mainClock.autoAdvance = false
+        advanceRotationTime(9_000)
+        val next = compose.onNodeWithContentDescription("Next Spotlight movie").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!
+        val previous = compose.onNodeWithContentDescription("Previous Spotlight movie").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!
+        // Both real callbacks run in one UI turn, with no intervening composition.
+        compose.runOnUiThread { next(); previous() }
+        // Flush the following composition frame, as in the other manual-reset tests.
+        advanceRotationTime(100)
+        advanceRotationTime(1_100) // Cross the original deadline.
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        advanceRotationTime(8_700)
+        compose.onNodeWithText("Feature A").assertIsDisplayed()
+        advanceRotationTime(400)
+        compose.onNodeWithText("Feature B").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Previous Spotlight movie").assertIsFocused()
+        verify(exactly = 0) { viewModel.load(any()) }
+    }
+
+    @Test fun focusedAutomaticLoopKeepsTheSameFiveMovieLineup() {
+        val movies = (1L..5L).map { first.copy(id = UUID(0, it), name = "Feature $it") }
+        val state = render(SpotlightState(
+            scope = SpotlightScope(UUID(1, 1), UUID(2, 2), UUID(3, 3)), movies = movies))
+        compose.mainClock.autoAdvance = false
+        for (name in listOf("Feature 2", "Feature 3", "Feature 4", "Feature 5", "Feature 1")) {
+            advanceRotationTime(10_100)
+            compose.onNodeWithText(name).assertIsDisplayed()
+            compose.onNodeWithText("Play").assertIsFocused()
+        }
+        compose.runOnIdle { assertEquals(movies, state.value.movies) }
+        verify(exactly = 0) { viewModel.load(any()) }
+        verify(exactly = 0) { viewModel.play(any()) }
+        verify(exactly = 0) { viewModel.details(any()) }
     }
 
     @Test fun explicitHomeResetStartsCarouselAndKeepsFeaturedMovieWithoutQueries() {

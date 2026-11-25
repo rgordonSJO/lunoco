@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.preferences
 
 import androidx.compose.foundation.background
@@ -32,6 +33,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.preferences.AppPreferences
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import com.github.damontecres.wholphin.ui.theme.colors.LunocoUiColors
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import kotlinx.coroutines.flow.first
@@ -142,8 +145,15 @@ fun LunocoSettingsWorkspace(
                             .onPreviewKeyEvent {
                                 if (it.key == Key.DirectionRight && it.type == KeyEventType.KeyDown) { enterDetails(); true } else false
                             }
-                            .border(2.dp, if (focused) LunocoUiColors.FocusOutline else Color.Transparent, shape)
-                            .background(if (focused) LunocoUiColors.CardFooter else Color.Transparent, shape)
+                            .border(2.dp, if (focused) MaterialTheme.colorScheme.border else Color.Transparent, shape)
+                            .background(
+                                when {
+                                    focused -> MaterialTheme.colorScheme.primaryContainer
+                                    item == category && LocalLunocoContentStyle.current -> LunocoContentStyle.Selected
+                                    else -> Color.Transparent
+                                },
+                                shape,
+                            )
                             .semantics { selected = item == category }
                             .focusProperties { canFocus = true }
                             .clickable(role = Role.Tab, interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -157,7 +167,7 @@ fun LunocoSettingsWorkspace(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Box(Modifier.width(3.dp).height(20.dp).background(
-                            if (item == category) LunocoUiColors.Accent else Color.Transparent, shape))
+                            if (item == category) MaterialTheme.colorScheme.primary else Color.Transparent, shape))
                         Text(stringResource(LunocoSettingsCatalog.categoryTitle(item, screen)), fontSize = 16.sp, lineHeight = 22.sp,
                             color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                     }

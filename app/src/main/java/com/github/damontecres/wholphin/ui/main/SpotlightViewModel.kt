@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import android.content.Context
@@ -70,7 +71,10 @@ internal fun spotlightCandidateRequests(scope: SpotlightScope): List<GetItemsReq
 
 /** One bounded cached pool per account/library/day. Never called from focus or pager callbacks. */
 @Singleton
-internal class SpotlightRepository @Inject constructor(private val server: ServerRepository) {
+internal class SpotlightRepository @Inject constructor(
+    private val server: ServerRepository,
+    private val history: SpotlightHistoryStore,
+) {
     private val mutex = Mutex()
     private var cacheKey: Pair<SpotlightScope, Long>? = null
     private var cached = emptyList<BaseItemDto>()
@@ -120,7 +124,8 @@ internal class SpotlightRepository @Inject constructor(private val server: Serve
                     server.apiClient.itemsApi.getItems(request).content.items
                 }
                 requireScope(scope)
-                cached = selectSpotlightMovies(scoped, scope, day, collections = collections)
+                cached = selectSpotlightMovies(scoped, scope, day, collections = collections, history = history.read(scope, day))
+                if (successes.get() > 0) history.record(scope, day, cached)
                 Timber.i("Spotlight pool: returned=%d unique=%d accepted=%d selected=%d rejected=%s missingBackdrop=%d omittedSourceCount=%d streams=%d/%d",
                     batches.sumOf { it.size }, audit.fetched, audit.accepted, cached.size,
                     audit.rejections.toSortedMap(compareBy { it.ordinal }).toString(),
@@ -129,6 +134,16 @@ internal class SpotlightRepository @Inject constructor(private val server: Serve
                 cached
             }
         }
+
+    suspend fun discard(scope: SpotlightScope) = withContext(WholphinDispatchers.IO) {
+        mutex.withLock {
+            if (cacheKey?.first == scope) {
+                cacheKey = null
+                cached = emptyList()
+            }
+            history.clear(scope)
+        }
+    }
 
     private fun requireScope(scope: SpotlightScope) {
         if (server.currentServer?.id != scope.serverId || server.currentUser?.id != scope.userId)
@@ -164,6 +179,7 @@ internal class SpotlightViewModel @Inject constructor(
                     requestedDay = null
                     requestedSession = null
                     _state.value = SpotlightState()
+                    repository.discard(scope)
                 }
             }
         }

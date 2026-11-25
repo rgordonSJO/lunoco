@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.detail.livetv
 
 import android.text.format.DateUtils
@@ -32,6 +33,8 @@ import androidx.tv.material3.ListItemDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.tv.material3.surfaceColorAtElevation
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.services.NavigationManager
@@ -311,7 +314,8 @@ fun Recording(
         modifier = modifier,
         colors =
             ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+                containerColor = if (LocalLunocoContentStyle.current) LunocoContentStyle.Panel
+                    else MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
             ),
         leadingContent = {
             // TODO

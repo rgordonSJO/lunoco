@@ -1,30 +1,15 @@
+<!-- Modified by Lunoco contributors on 2026-11-22 for the stable build. -->
 # Build Lunoco
 
-## Requirements
+Use the checked-in Gradle 9.8.2 wrapper, a compatible JDK 25 toolchain, Android SDK platform 37 and Android Build Tools 36.0.0. Set ANDROID_HOME to the SDK or use an ignored local.properties. The checked-in version catalog and application build declare dependency and generation inputs. The app source, schemas, resources, license inputs and Seerr API generation files are in this tree.
 
-Use the checked-in Gradle wrapper (9.8.2). The daemon toolchain file requests JDK 25; install a compatible JDK or allow Gradle toolchain provisioning. Install Android SDK platform 37 and its build tools. Set ANDROID_HOME to your SDK, or create your own ignored local.properties containing sdk.dir. Network access is needed for declared Maven dependencies and generated Seerr API tooling.
-
-Keep the dependency versions in gradle/libs.versions.toml. This tree uses Android Gradle Plugin 9.5.0, Kotlin 2.4.21 and Media3 1.11.1. Do not upgrade them when checking release correspondence.
-
-## Commands
-
-On Windows PowerShell (omit .bat on Linux/macOS):
+On Windows PowerShell:
 
 ```powershell
-./gradlew.bat :app:testDefaultDebugUnitTest
-./gradlew.bat :app:assembleDefaultPerformance -Plunatv.performanceBuildId=lunoco-navigation-10b2
+.\gradlew.bat :app:testDefaultDebugUnitTest
+.\gradlew.bat :app:assembleDefaultPerformance '-Plunoco.releaseVersion=0.11.0' '-Plunoco.releaseVersionCode=4'
 ```
 
-The optimized Performance variant uses package com.ryan.lunatv.jellyfin.performance, resource shrinking and R8. Debug has a different package and is not an update for the public APK.
+The second command uses the v0.11.0 release version parameters. The [v0.11.0 release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.0) includes corresponding source, a recipient relinking kit and native notices. The corresponding source build uses the committed derived artwork, the MPV stub and public Maven dependencies. Leave optional extension credentials and local FFmpeg, AV1 or MPV AARs out of this configuration.
 
-The five approved derived Lunoco image resources are committed; asset regeneration and the private original artwork are not needed to build. Do not replace the artwork.
-
-No optional FFmpeg/AV1/MPV extension credentials or AARs are required for this release's configuration. The MPV module is an API stub, not a working player. Do not advertise optional extensions as included. Android/Media3 and other declared native dependencies still ship in the verified APK.
-
-## Signing and reproduction
-
-The Performance variant uses Gradle's local debug signing configuration. A fresh machine generates a different key and **cannot** produce an official in-place update. Only the maintainer's original private signing key produces the expected signer. Never commit, upload or share that key.
-
-The public repository is a clean snapshot, not the private development history. Git-derived version metadata and build timestamps will differ on a fresh build; a byte-for-byte reproducible APK is not claimed. RELEASE-IDENTITY.json records the original binary. Production Kotlin, resources, schemas, protobufs, dependency declarations and application build script match development commit 7268ce4a1a0b62b4d9a1fc152159ae4e2693d786. Only a test address and publication documentation differ; the private developer-only asset verifier is omitted.
-
-For future releases, explicitly set monotonically increasing versionCode and the intended versionName in app/build.gradle.kts before building; do not rely on the count of local Git tags. Follow RELEASING.md and verify the finished manifest/signer.
+The Performance variant uses R8 and resource shrinking and has application ID `com.ryan.lunatv.jellyfin.performance`. Its existing release pipeline uses the original maintainer signing identity. A locally generated development key can build a local testing binary. It cannot update the public app signed with the maintainer’s key. Keep signing material outside the source tree. Verify the APK, packaging configuration and source-to-binary record before a release. Build timestamps and a different signer can change the output bytes on another machine.

@@ -1,9 +1,11 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.detail.series
 
 import android.app.Application
 import android.content.pm.ActivityInfo
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
+import com.github.damontecres.wholphin.ui.theme.LunocoContentTheme
 import com.github.damontecres.wholphin.ui.theme.colors.JellyLuThemeColors
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -19,7 +21,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.tv.material3.MaterialTheme
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.HomeRowConfig
-import com.github.damontecres.wholphin.ui.main.homeItemDestination
+import com.github.damontecres.wholphin.ui.main.resolveRecentSeriesEntry
+import kotlinx.coroutines.runBlocking
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.preferences.AppPreferences
 import com.github.damontecres.wholphin.preferences.UserPreferences
@@ -63,7 +66,7 @@ class RecentSeriesFocusUiTest {
     private val episodes = List(18) { BaseItem(BaseItemDto(id = UUID(3, it.toLong() + 1),
         type = BaseItemKind.EPISODE, name = "Episode ${it + 1}", indexNumber = it + 1,
         parentIndexNumber = 3, seasonId = seasons[3].id, seriesId = series.id)) }
-    private val selected = RecentSeriesEpisodes(seasons[3], 3, episodes, 6, episodes[6].id)
+    private var selected = RecentSeriesEpisodes(seasons[3], 3, episodes, 6, episodes[6].id)
     private var selection by mutableStateOf<RecentSeriesEpisodes?>(null)
     private var loading by mutableStateOf(false)
     private var favorite by mutableStateOf(false)
@@ -75,8 +78,10 @@ class RecentSeriesFocusUiTest {
         val routeTarget = if (library == null) {
             if (target) selected.episodeId.toString() else null
         } else {
-            (homeItemDestination(HomeRowConfig.RecentlyAdded(library), episodes.last()) as Destination.MediaItem)
-                .recentEpisode?.episodeId?.toString()
+            (runBlocking {
+                resolveRecentSeriesEntry(HomeRowConfig.RecentlyAdded(library), episodes[selected.episodeIndex],
+                    { true }, { SeasonEpisodeIds(selected.season.id, selected.season.indexNumber, selected.episodeId, selected.episodeIndex + 1) })
+            } as Destination.MediaItem).recentEpisode?.episodeId?.toString()
         }
         selection = if (routeTarget != null && !delayed) selected else null
         loading = delayed
@@ -88,7 +93,7 @@ class RecentSeriesFocusUiTest {
                     val savedPages = rememberSaveableStateHolder()
                     if (seriesVisible) {
                     savedPages.SaveableStateProvider("series-entry") {
-                    SeriesDetailsContent(
+                    LunocoContentTheme { SeriesDetailsContent(
                         preferences = UserPreferences(AppPreferences.getDefaultInstance(), null),
                         series = currentSeries, seasons = seasons.take(seasonCount), similar = emptyList(), trailers = emptyList(),
                         extras = emptyList(), people = emptyList(), discovered = emptyList(), played = false,
@@ -101,7 +106,7 @@ class RecentSeriesFocusUiTest {
                         recentEpisodeKey = routeTarget,
                         onClickRecentEpisode = { clicked += it.id; if (openDetailsOnEpisode) seriesVisible = false },
                         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                    )
+                    ) }
                     }
                     } else Text("Episode details")
                 }
@@ -114,7 +119,7 @@ class RecentSeriesFocusUiTest {
         render()
         episode(6).assertIsDisplayed().assertIsFocused()
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
-        val output = File("build/reports/lunoco-recent09b/targeted-series.png")
+        val output = File("build/reports/ui-cohesion37/targeted-series.png")
         output.parentFile!!.mkdirs()
         output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
         assertTrue(clicked.isEmpty())
@@ -138,17 +143,39 @@ class RecentSeriesFocusUiTest {
         episode(6).assertDoesNotExist() // No late row insertion underneath an active browser.
         assertTrue(clicked.isEmpty())
     }
-    private fun assertRecentOverview(library: UUID, seasonCount: Int) {
+    private fun assertRecentTarget(library: UUID, seasonCount: Int) {
+        if (seasonCount == 1) selected = selected.copy(season = seasons[0], seasonIndex = 0)
         render(library = library, seasonCount = seasonCount)
-        compose.onNodeWithText("Play").assertIsDisplayed().assertIsFocused()
-        compose.onNodeWithText("A series").assertIsDisplayed()
-        episode(17).assertDoesNotExist()
+        episode(6).assertIsDisplayed().assertIsFocused()
+        compose.onNode(isSelected()).assertExists()
         assertTrue(clicked.isEmpty())
     }
-    @Test fun showsSingleSeasonStartsAtOverviewAndPlay() = assertRecentOverview(UUID(10, 1), 1)
-    @Test fun showsMultipleSeasonsStartAtOverviewAndPlay() = assertRecentOverview(UUID(10, 1), 4)
-    @Test fun kidsShowsSingleSeasonStartsAtOverviewAndPlay() = assertRecentOverview(UUID(10, 2), 1)
-    @Test fun kidsShowsMultipleSeasonsStartAtOverviewAndPlay() = assertRecentOverview(UUID(10, 2), 4)
+    @Test fun showsSingleSeasonTargetsEpisode() = assertRecentTarget(UUID(10, 1), 1)
+    @Test fun showsMultipleSeasonsTargetEpisode() = assertRecentTarget(UUID(10, 1), 4)
+    @Test fun kidsShowsSingleSeasonTargetsEpisode() = assertRecentTarget(UUID(10, 2), 1)
+    @Test fun kidsShowsMultipleSeasonsTargetEpisode() = assertRecentTarget(UUID(10, 2), 4)
+
+    @Test fun seasonTwoEpisodeSixIsVisibleFocusedAndNavigableWithoutAutoplay() {
+        selected = selected.copy(season = seasons[2], seasonIndex = 2, episodeIndex = 5, episodeId = episodes[5].id)
+        render()
+        episode(5).assertIsDisplayed().assertIsFocused()
+        compose.onNode(isSelected()).assertExists()
+        episode(5).performKeyInput { pressKey(Key.DirectionRight) }
+        episode(6).assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
+        episode(5).assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNode(isFocused()).assertExists()
+        assertTrue(clicked.isEmpty())
+    }
+
+    @Test fun targetTakesFocusOnlyAfterDelayedEpisodesAreReady() {
+        render(delayed = true)
+        compose.onNodeWithText("Play").assertIsFocused()
+        compose.runOnIdle { selection = selected; loading = false }
+        episode(6).assertIsDisplayed().assertIsFocused()
+        compose.runOnIdle { favorite = true }
+        episode(6).assertIsFocused()
+        assertTrue(clicked.isEmpty())
+    }
 
     @Test fun differentSeriesDoesNotInheritActionFocus() {
         render(target = false)
@@ -164,7 +191,7 @@ class RecentSeriesFocusUiTest {
 
     @Test fun existingEpisodeSelectionSurvivesDetailsBackRestoration() {
         openDetailsOnEpisode = true
-        render() // Retained legacy targeted destination; not a new Recently Added entry.
+        render() // Target focus is consumed once; returning preserves the user-selected episode.
         episode(6).performKeyInput { pressKey(Key.DirectionRight) }
         episode(7).assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
         compose.onNodeWithText("Episode details").assertExists()

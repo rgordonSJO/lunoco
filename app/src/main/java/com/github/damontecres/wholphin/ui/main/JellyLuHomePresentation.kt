@@ -1,8 +1,10 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.unit.dp
 
 // Scoped to Home; detail/library/player surfaces retain their existing presentation.
 val LocalJellyLuHomeCards = staticCompositionLocalOf { false }
@@ -11,12 +13,18 @@ val LocalJellyLuRailFocus = staticCompositionLocalOf<FocusRequester?> { null }
 // Read only when completing a deferred Home focus transition, never on poster focus.
 internal val LocalJellyLuNavigationHasFocus = staticCompositionLocalOf<() -> Boolean> { { false } }
 
+// Nonzero only in the shared Home overlay shell. Standalone/non-Home callers retain geometry.
+internal val LocalHomeNavigationInset = staticCompositionLocalOf { 0.dp }
+
 /** Keep a fully visible card still; scroll vertically only far enough to reveal the next card. */
-internal class JellyLuHomeBringIntoViewSpec(private val inset: Float) : BringIntoViewSpec {
+internal class JellyLuHomeBringIntoViewSpec(
+    private val inset: Float,
+    private val topInset: Float = inset,
+) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
         when {
-            size > containerSize - inset * 2 -> offset - inset
-            offset < inset -> offset - inset
+            size > containerSize - topInset - inset -> offset - topInset
+            offset < topInset -> offset - topInset
             offset + size > containerSize - inset -> offset + size - containerSize + inset
             else -> 0f
         }

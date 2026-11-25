@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin
 
 import android.content.Context
@@ -262,7 +263,8 @@ class MainActivity : AppCompatActivity() {
                             LaunchedEffect(appPreferences.debugLogging) {
                                 DebugLogTree.INSTANCE.enabled = appPreferences.debugLogging
                             }
-                            CompositionLocalProvider(LocalImageUrlService provides imageUrlService) {
+                            CompositionLocalProvider(LocalImageUrlService provides imageUrlService,
+                        com.github.damontecres.wholphin.ui.setup.LocalLunocoUpdater provides updateChecker) {
                                 WholphinTheme(
                                     true,
                                     appThemeColors = appPreferences.interfacePreferences.appThemeColors,
@@ -338,17 +340,13 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launchDefault {
             val appPreferences = userPreferencesDataStore.data.first()
-            if (UpdateChecker.ACTIVE && appPreferences.autoCheckForUpdates) {
-                try {
-                    updateChecker.maybeShowUpdateToast(
-                        appPreferences.updateUrl,
-                    )
-                } catch (ex: Exception) {
-                    Timber.w(
-                        ex,
-                        "Exception during update check",
-                    )
-                }
+            try {
+                updateChecker.checkAutomatically(appPreferences.autoCheckForUpdates)
+            } catch (ex: Exception) {
+                Timber.w(
+                    ex,
+                    "Exception during update check",
+                )
             }
         }
     }

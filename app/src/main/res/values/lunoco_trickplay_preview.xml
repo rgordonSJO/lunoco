@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lunoco_trickplay_loading">Loading preview…</string>
+    <string name="lunoco_trickplay_loading_previous">Previous frame · loading</string>
+</resources>

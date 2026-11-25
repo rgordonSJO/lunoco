@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin
 
 import androidx.compose.animation.AnimatedVisibility
@@ -33,6 +34,7 @@ import com.github.damontecres.wholphin.services.BackdropService
 import com.github.damontecres.wholphin.services.NavigationManager
 import com.github.damontecres.wholphin.services.ScreensaverService
 import com.github.damontecres.wholphin.services.SetupDestination
+import com.github.damontecres.wholphin.ui.theme.LunocoContentTheme
 import com.github.damontecres.wholphin.ui.components.AppScreensaver
 import com.github.damontecres.wholphin.ui.nav.ApplicationContent
 import com.github.damontecres.wholphin.ui.setup.SwitchServerContent
@@ -86,14 +88,13 @@ fun MainContent(
                             }
 
                             SetupDestination.ServerList -> {
-                                SwitchServerContent(Modifier.fillMaxSize())
+                                LunocoContentTheme { SwitchServerContent(Modifier.fillMaxSize()) }
                             }
 
                             is SetupDestination.UserList -> {
-                                SwitchUserContent(
-                                    server = key.server,
-                                    Modifier.fillMaxSize(),
-                                )
+                                LunocoContentTheme {
+                                    SwitchUserContent(server = key.server, Modifier.fillMaxSize())
+                                }
                             }
 
                             is SetupDestination.AppContent -> {

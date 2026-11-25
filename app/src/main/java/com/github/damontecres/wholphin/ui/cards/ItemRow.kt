@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.cards
 
 import androidx.compose.foundation.focusGroup
@@ -5,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -58,6 +60,7 @@ fun <T> ItemRow(
     resetGeneration: Long? = null,
     onFocusReady: (() -> Unit)? = null,
     initialPosition: Int? = null,
+    minimumRowHeight: Dp = 0.dp,
 ) {
     val calmHome = LocalJellyLuHomeCards.current
     val edgePadding = if (calmHome) 40.dp else horizontalPadding
@@ -136,6 +139,7 @@ fun <T> ItemRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .then(if (minimumRowHeight > 0.dp) Modifier.heightIn(min = minimumRowHeight) else Modifier)
                     .focusGroup()
                     // Discard the restorer's cached child only for an explicit reset.
                     // Otherwise it can override the freshly reset first-card requester.

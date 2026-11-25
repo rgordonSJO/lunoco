@@ -1,6 +1,11 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.github.damontecres.wholphin.ui.theme.LunocoGlassSurface
+import com.github.damontecres.wholphin.ui.theme.lunocoGlassHasOpticalRim
+import com.github.damontecres.wholphin.ui.theme.LunocoGlassArtworkSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
@@ -12,8 +17,11 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -67,7 +75,7 @@ internal fun JellyLuSpotlight(
         }
     }
     val backdropRequest = remember(backdrop, context) {
-        backdrop?.let { ImageRequest.Builder(context).data(it).size(1600, 900).scale(coil3.size.Scale.FILL).build() }
+        backdrop?.let { ImageRequest.Builder(context).data(it).size(1600, 900).scale(coil3.size.Scale.FIT).build() }
     }
     val frame by key(state.scope, state.selectionDay) {
         rememberSpotlightFrame(requestedMovie, backdropRequest)
@@ -78,14 +86,14 @@ internal fun JellyLuSpotlight(
     // Do not capture a movie/index in remembered callbacks: daily snapshots can replace both.
     val currentMovie = rememberUpdatedState(movie)
     val currentMovies = rememberUpdatedState(state.movies)
-    val automaticPage = remember(selectedId) { booleanArrayOf(false) }
+    val manualNavigation = remember(selectedId) { mutableLongStateOf(0L) }
     // If the next artwork is pending, actions belong to the still-visible movie. Cancel that
     // pending selection before leaving so Details/Back restores the movie the user actually saw.
     val onPlay = remember(viewModel, selectedId) { {
-        currentMovie.value?.let { automaticPage[0] = false; selectedId.value = it.id.toString(); viewModel.play(it) }; Unit
+        currentMovie.value?.let { selectedId.value = it.id.toString(); viewModel.play(it) }; Unit
     } }
     val onDetails = remember(viewModel, selectedId) { {
-        currentMovie.value?.let { automaticPage[0] = false; selectedId.value = it.id.toString(); viewModel.details(it) }; Unit
+        currentMovie.value?.let { selectedId.value = it.id.toString(); viewModel.details(it) }; Unit
     } }
     val onPage = remember(selectedId) {
         { delta: Int ->
@@ -97,20 +105,10 @@ internal fun JellyLuSpotlight(
             Unit
         }
     }
-    val onPrevious = remember(onPage) { { automaticPage[0] = false; onPage(-1) } }
-    val onNext = remember(onPage) { { automaticPage[0] = false; onPage(1) } }
-    val onAutomaticNext = remember(onPage) { { automaticPage[0] = true; onPage(1) } }
-    val controlsFocused = remember { mutableStateOf(false) }
-    val onInteraction = remember(selectedId) { { focused: Boolean ->
-        controlsFocused.value = focused
-        // Do not let an unseen automatic image load finish changing the movie after the
-        // user enters its controls. Manual paging within this group still works normally.
-        if (focused && automaticPage[0]) {
-            automaticPage[0] = false
-            currentMovie.value?.let { selectedId.value = it.id.toString() }
-        }
-    } }
-    SpotlightAutoRotation(state.movies.size, selectedId, controlsFocused, onAutomaticNext)
+    val onPrevious = remember(onPage, manualNavigation) { { manualNavigation.longValue++; onPage(-1) } }
+    val onNext = remember(onPage, manualNavigation) { { manualNavigation.longValue++; onPage(1) } }
+    val onAutomaticNext = remember(onPage) { { onPage(1) } }
+    SpotlightAutoRotation(state.movies.size, selectedId, manualNavigation, onAutomaticNext)
     val logo = remember(state.scope, imageService, movie?.id, movie?.imageTags) {
         movie?.imageTags?.get(ImageType.LOGO)?.let { tag ->
             imageService.getItemImageUrl(movie.id, ImageType.LOGO,
@@ -127,18 +125,31 @@ internal fun JellyLuSpotlight(
     }
     val pageDescription = stringResource(R.string.jellylu_spotlight_page,
         index + 1, state.movies.size, movie?.name.orEmpty())
-    Box(Modifier.fillMaxWidth().height(230.dp).background(background)) {
+    val navigationInset = LocalHomeNavigationInset.current
+    // Move the shell's former clearance into the foreground only. The same single artwork
+    // now starts at screen y=0; title/actions/rows keep their former absolute positions.
+    Box(Modifier.fillMaxWidth().height(230.dp + navigationInset).background(background)) {
+        LunocoGlassArtworkSource(hasArtwork = frame.painter != null) {
         key(state.scope) {
             SpotlightArtwork(frame.painter, background, Modifier.fillMaxSize())
         }
-        Box(Modifier.matchParentSize().background(Brush.horizontalGradient(
-            0f to background, .38f to background.copy(alpha = .90f),
-            .70f to background.copy(alpha = .18f), 1f to Color.Transparent)))
+        Box(Modifier.matchParentSize().drawWithCache {
+            // Reuse the existing scrim draw to hide the fitted image's edge. Cache geometry
+            // per painter/viewport; fade alpha never invalidates text, controls or Home rows.
+            val start = maxOf(.38f, spotlightArtworkStartFraction(frame.painter, size) + .01f).coerceAtMost(.94f)
+            val end = maxOf(.70f, start + .18f).coerceAtMost(.99f)
+            val brush = Brush.horizontalGradient(
+                0f to background, start to background,
+                end to background.copy(alpha = .18f), 1f to Color.Transparent)
+            onDrawBehind { drawRect(brush) }
+        })
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(
             0f to background.copy(alpha = .65f), .18f to Color.Transparent,
             .68f to Color.Transparent, 1f to background)))
+        }
+        Box(Modifier.fillMaxSize().padding(top = navigationInset)) {
         Text(stringResource(R.string.jellylu_spotlight), fontSize = 12.sp, lineHeight = 14.sp,
-            color = MaterialTheme.colorScheme.primary,
+            color = LunocoUiColors.SpotlightAccent,
             modifier = Modifier.padding(start = 40.dp, top = 6.dp).semantics { heading() })
         if (movie == null) {
             Text(stringResource(R.string.jellylu_spotlight_loading), color = MaterialTheme.colorScheme.onBackground,
@@ -153,7 +164,6 @@ internal fun JellyLuSpotlight(
                 modifier = Modifier.padding(start = 40.dp, top = 112.dp).width(380.dp).height(36.dp))
             SpotlightControls(
                 groupFocus = groupFocus, rowFocus = rowFocus, onFocus = onFocus,
-                onInteraction = onInteraction,
                 hasMultiple = state.movies.size > 1, resume = spotlightResumeMs(movie) > 0,
                 pageDescription = pageDescription, onPlay = onPlay, onDetails = onDetails,
                 onPrevious = onPrevious, onNext = onNext,
@@ -164,10 +174,11 @@ internal fun JellyLuSpotlight(
             ) {
                 repeat(state.movies.size) { dot ->
                     Box(Modifier.size(if (dot == index) 5.dp else 4.dp)
-                        .background(if (dot == index) MaterialTheme.colorScheme.primary
+                        .background(if (dot == index) LunocoUiColors.SpotlightAccent
                             else MaterialTheme.colorScheme.onBackground.copy(alpha = .35f), CircleShape))
                 }
             }
+        }
         }
     }
 }
@@ -181,7 +192,6 @@ private fun SpotlightControls(
     groupFocus: FocusRequester,
     rowFocus: FocusRequester?,
     onFocus: (Int) -> Unit,
-    onInteraction: (Boolean) -> Unit,
     hasMultiple: Boolean,
     resume: Boolean,
     pageDescription: String,
@@ -202,14 +212,10 @@ private fun SpotlightControls(
     }
     val reveal = LocalSpotlightReveal.current
     val groupWasFocused = remember { booleanArrayOf(false) }
-    DisposableEffect(onInteraction) {
-        onDispose { onInteraction(false) }
-    }
-    val groupModifier = remember(groupFocus, hasMultiple, reveal, lastControl, onInteraction) {
+    val groupModifier = remember(groupFocus, hasMultiple, reveal, lastControl) {
         Modifier.padding(start = 40.dp, top = 158.dp)
             .onFocusChanged {
                 if (it.hasFocus != groupWasFocused[0]) {
-                    onInteraction(it.hasFocus)
                     if (it.hasFocus) reveal()
                 }
                 groupWasFocused[0] = it.hasFocus
@@ -288,14 +294,22 @@ internal fun SpotlightButton(
     primary: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Button(onClick, modifier = modifier.height(32.dp),
+    val interaction = remember { MutableInteractionSource() }
+    val glass = LunocoGlassSurface(interaction, primary = primary)
+    val opticalRim = lunocoGlassHasOpticalRim()
+    Button(onClick, modifier = modifier.height(32.dp).then(glass),
+        interactionSource = interaction,
+        border = ButtonDefaults.border(
+            border = if (opticalRim) Border.None else Border(BorderStroke(1.dp, LunocoUiColors.NavigationBorder), shape = RoundedCornerShape(50)),
+            focusedBorder = Border(BorderStroke(2.dp, LunocoUiColors.NavigationFocusOutline), shape = RoundedCornerShape(50)),
+        ),
         scale = ButtonDefaults.scale(focusedScale = 1f),
         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
         colors = ButtonDefaults.colors(
-            containerColor = if (primary) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (primary) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onBackground,
-            focusedContainerColor = MaterialTheme.colorScheme.primary,
-            focusedContentColor = MaterialTheme.colorScheme.background,
+            containerColor = Color.Transparent,
+            contentColor = if (primary) LunocoUiColors.GlassPrimaryContent else MaterialTheme.colorScheme.onBackground,
+            focusedContainerColor = Color.Transparent,
+            focusedContentColor = if (primary) LunocoUiColors.GlassPrimaryContent else LunocoUiColors.NavigationIvory,
         ),
     ) {
         // TV Button's internal row can wrap at its 58dp minimum inside our wider surface.
@@ -308,6 +322,22 @@ internal fun SpotlightButton(
         )
     }
 }
+
+/**
+ * Paint the decorative track on the existing image node instead of measuring and placing
+ * another Box for every active resume card. The separate progress fill keeps its original
+ * bounds, RTL alignment and accessibility semantics.
+ */
+internal fun Modifier.homeResumeProgressTrack(visible: Boolean): Modifier =
+    if (!visible) this else drawWithCache {
+        val height = 3.dp.roundToPx().toFloat().coerceAtMost(size.height)
+        val origin = Offset(0f, size.height - height)
+        val trackSize = Size(size.width, height)
+        onDrawWithContent {
+            drawContent()
+            drawRect(LunocoUiColors.ProgressTrack, topLeft = origin, size = trackSize)
+        }
+    }
 
 /** Compact Home-only resume card: actions and remote play remain owned by the existing row. */
 @Composable
@@ -345,11 +375,11 @@ internal fun CompactHomeResumeCard(
         border = CardDefaults.border(focusedBorder = Border(BorderStroke(2.dp, MaterialTheme.colorScheme.border))),
         modifier = modifier.width(width).semantics { contentDescription = accessible },
     ) {
+        val fraction = progress.fraction?.takeIf { it > 0f && it < 1f }
         Box(Modifier.fillMaxWidth().height(cardHeight)) {
-            AsyncImage(imageUrl, null, contentScale = contentScale, modifier = Modifier.fillMaxSize())
-            progress.fraction?.takeIf { it > 0f && it < 1f }?.let { fraction ->
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp)
-                    .background(LunocoUiColors.ProgressTrack))
+            AsyncImage(imageUrl, null, contentScale = contentScale,
+                modifier = Modifier.fillMaxSize().homeResumeProgressTrack(fraction != null))
+            fraction?.let { fraction ->
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(fraction).height(3.dp)
                     .background(MaterialTheme.colorScheme.primary)
                     .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) })

@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.playback.overlay
 
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.github.damontecres.wholphin.R
+import com.github.damontecres.wholphin.ui.playback.ScrubDirection
 import androidx.media3.common.Player
 import org.jellyfin.sdk.model.api.TrickplayInfo
 
@@ -16,12 +20,13 @@ import org.jellyfin.sdk.model.api.TrickplayInfo
  * The compact overlay shown during D-Pad seeking in trickplay mode.
  */
 @Composable
-fun DpadSeekOverlay(
+internal fun DpadSeekOverlay(
     player: Player,
     seekPositionMs: Long,
     trickplayInfo: TrickplayInfo?,
     trickplayUrlFor: (Int) -> String?,
     modifier: Modifier = Modifier,
+    direction: ScrubDirection? = null,
 ) {
     val durationMs = player.duration.coerceAtLeast(0L)
     val seekProgressPercent =
@@ -49,10 +54,15 @@ fun DpadSeekOverlay(
                 seekProgressMs = seekPositionMs,
                 trickplayInfo = trickplayInfo,
                 trickplayUrlFor = trickplayUrlFor,
+                directionLabel = when (direction) {
+                    ScrubDirection.FORWARD -> stringResource(R.string.lunoco_seek_forward)
+                    ScrubDirection.BACKWARD -> stringResource(R.string.lunoco_seek_backward)
+                    null -> null
+                },
                 modifier =
                     Modifier
                         .align(Alignment.BottomStart)
-                        .offsetByPercent(xPercentage = seekProgressPercent)
+                        .then(if (direction == null) Modifier.offsetByPercent(seekProgressPercent) else Modifier)
                         .padding(bottom = 8.dp),
             )
         }

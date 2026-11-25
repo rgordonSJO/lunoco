@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.discovery
 
 import com.github.damontecres.wholphin.data.ServerRepository
@@ -8,6 +9,7 @@ import com.github.damontecres.wholphin.util.configure
 import com.github.damontecres.wholphin.util.reset
 import io.mockk.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.jellyfin.sdk.api.client.ApiClient
@@ -122,6 +124,54 @@ class MovieExploreRepositoryTest {
         assertEquals(primary, repository.load(scope))
         coVerify(exactly = 2) { genres.getGenres(any<GetGenresRequest>()) }
         coVerify(exactly = 26) { studios.getStudios(any<GetStudiosRequest>()) }
+    }
+
+    @Test fun coldMetadataLatencyAndWarmReentryAreMeasuredWithoutChangingQueryPolicy() = runTest(dispatcher) {
+        coEvery { library.getItem(scope.library, userId = scope.user) } coAnswers {
+            kotlinx.coroutines.delay(250)
+            successResponse(BaseItemDto(id = scope.library, type = BaseItemKind.COLLECTION_FOLDER,
+                collectionType = CollectionType.MOVIES))
+        }
+        coEvery { studios.getStudios(any<GetStudiosRequest>()) } coAnswers {
+            kotlinx.coroutines.delay(250); successQueryResult(listOf(studio))
+        }
+        coEvery { genres.getGenres(any<GetGenresRequest>()) } coAnswers {
+            kotlinx.coroutines.delay(250); successQueryResult(listOf(genre))
+        }
+        coEvery { items.getItems(any<GetItemsRequest>()) } coAnswers {
+            kotlinx.coroutines.delay(250); successQueryResult(listOf(movie))
+        }
+        val repository = MovieExploreRepository(server)
+        val start = testScheduler.currentTime
+        val cold = repository.load(scope)
+        val coldMs = testScheduler.currentTime - start
+        val warmStart = testScheduler.currentTime
+        assertSame(cold, repository.load(scope))
+        val warmMs = testScheduler.currentTime - warmStart
+        assertEquals(2500L, coldMs)
+        assertEquals(0L, warmMs)
+        coVerify(exactly = 1) { library.getItem(scope.library, userId = scope.user) }
+        coVerify(exactly = 13) { studios.getStudios(any<GetStudiosRequest>()) }
+        coVerify(exactly = 1) { genres.getGenres(any<GetGenresRequest>()) }
+        coVerify(exactly = 2) { items.getItems(any<GetItemsRequest>()) }
+        println("HOME_DISCOVERY_SIMULATED_COLD_MS=$coldMs;WARM_MS=$warmMs;METADATA_REQUESTS=17;ARTWORK_DOWNLOADS=0")
+    }
+
+    @Test fun simultaneousHomeAndExploreLoadsShareOneCandidateRequestSet() = runTest(dispatcher) {
+        coEvery { library.getItem(scope.library, userId = scope.user) } coAnswers {
+            kotlinx.coroutines.delay(250)
+            successResponse(BaseItemDto(id = scope.library, type = BaseItemKind.COLLECTION_FOLDER,
+                collectionType = CollectionType.MOVIES))
+        }
+        val repository = MovieExploreRepository(server)
+        val home = async { repository.load(scope) }
+        val explore = async { repository.load(scope) }
+        advanceUntilIdle()
+        assertSame(home.await(), explore.await())
+        coVerify(exactly = 1) { library.getItem(scope.library, userId = scope.user) }
+        coVerify(exactly = 13) { studios.getStudios(any<GetStudiosRequest>()) }
+        coVerify(exactly = 1) { genres.getGenres(any<GetGenresRequest>()) }
+        coVerify(exactly = 2) { items.getItems(any<GetItemsRequest>()) }
     }
 
     @Test(expected = CancellationException::class)

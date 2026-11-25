@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.components
 
 import androidx.annotation.StringRes
@@ -305,6 +306,7 @@ fun ExpandablePlayButton(
     Button(
         onClick = { onClick.invoke(resume) },
         enabled = enabled,
+        colors = actionColors(primary = title == R.string.play || title == R.string.resume),
         modifier =
             modifier.requiredSizeIn(
                 minWidth = MinButtonSize,

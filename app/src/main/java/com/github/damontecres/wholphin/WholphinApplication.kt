@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin
 
 import android.app.Application
@@ -43,7 +44,7 @@ class WholphinApplication :
                         message: String,
                         t: Throwable?,
                     ) {
-                        Log.println(priority, tag ?: "Wholphin", message)
+                        Log.println(priority, tag ?: "Lunoco", message)
                     }
                 },
             )

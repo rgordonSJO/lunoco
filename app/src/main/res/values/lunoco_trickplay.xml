@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lunoco_seek_forward">Forward</string>
+    <string name="lunoco_seek_backward">Back</string>
+    <string name="lunoco_seek_failed">Could not seek to that position</string>
+    <string name="lunoco_trickplay_unavailable">Preview image unavailable</string>
+</resources>

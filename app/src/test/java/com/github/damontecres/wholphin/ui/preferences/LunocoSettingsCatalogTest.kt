@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.preferences
 
 import com.github.damontecres.wholphin.BuildConfig
@@ -34,7 +35,7 @@ class LunocoSettingsCatalogTest {
     @Test fun everyPreviouslyActiveDescriptorIsPresentOrAnExplicitCompatibilityRoute() {
         val original = flattened(basicPreferences + advancedPreferences + ExoPlayerPreferences +
             MpvPreferences + HdrFormatPreferences + SkipSegmentPreferences + experimentalPreferences + screensaverPreferences)
-        val navigationOnly = setOf(AppPreference.AdvancedSettings, AppPreference.ScreensaverSettings)
+        val navigationOnly = setOf(AppPreference.AdvancedSettings, AppPreference.ScreensaverSettings, AppPreference.UpdateUrl)
         val catalog = LunocoSettingsCatalog.inventory.map { it.preference }.toSet()
         assertEquals("No existing visible preference may be lost", emptySet<LunocoAppPreference>(),
             original - catalog - navigationOnly)
@@ -71,11 +72,40 @@ class LunocoSettingsCatalogTest {
         val none = LunocoSettingsCategory.entries.flatMap {
             LunocoSettingsCatalog.entries(it, defaults, updatingEnabled = false, discoverEnabled = false)
         }.map { it.preference }
-        for (pref in listOf(AppPreference.Update, AppPreference.AutoCheckForUpdates, AppPreference.UpdateUrl, AppPreference.SeerrIntegration)) {
+        for (pref in listOf(AppPreference.Update, AppPreference.AutoCheckForUpdates, AppPreference.SeerrIntegration)) {
             assertFalse(none.contains(pref))
             assertTrue(all().any { it.preference == pref })
         }
+        assertFalse(all().any { it.preference == AppPreference.UpdateUrl })
         assertFalse("The local default build must not enable the upstream updater", BuildConfig.UPDATING_ENABLED)
+    }
+
+    @Test fun aboutUsesGithubAvailabilityWithoutExposingLegacyUrl() {
+        val visible = LunocoSettingsCatalog.primaryEntries(LunocoSettingsCategory.SUPPORT, updatingEnabled = true)
+        assertEquals(listOf("support.version", "support.update", "support.update_auto", "support.licenses", "about.advanced"),
+            visible.map { it.id })
+        assertSame(AppPreference.AutoCheckForUpdates, visible[2].preference)
+        assertFalse(BuildConfig.UPDATING_ENABLED)
+        val unavailable = LunocoSettingsCatalog.primaryEntries(LunocoSettingsCategory.SUPPORT, updatingEnabled = false)
+        assertEquals(listOf("support.version", "support.licenses", "about.advanced"), unavailable.map { it.id })
+        assertFalse(visible.any { it.preference == AppPreference.UpdateUrl })
+        assertEquals("support.update", restoredSettingId(visible, "support.update", 1))
+        assertEquals("support.update_auto", restoredSettingId(visible, "support.update_auto", 2))
+    }
+
+    @Test fun updateTogglePreservesExistingPreferenceAndSerializerRoundTrip() = runBlocking {
+        val toggle = AppPreference.AutoCheckForUpdates
+        assertTrue(toggle.defaultValue)
+        assertTrue(toggle.getter(defaults))
+        for (enabled in listOf(false, true)) {
+            val changed = toggle.setter(defaults, enabled)
+            val bytes = ByteArrayOutputStream()
+            AppPreferencesSerializer().writeTo(changed, bytes)
+            val restored = AppPreferencesSerializer().readFrom(ByteArrayInputStream(bytes.toByteArray()))
+            assertEquals(enabled, toggle.getter(restored))
+            assertEquals(defaults.playbackPreferences, restored.playbackPreferences)
+            assertEquals(defaults.updateUrl, restored.updateUrl)
+        }
     }
 
     @Test fun backendSpecificOptionsAndExperimentalChildrenAreConditional() {

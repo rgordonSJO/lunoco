@@ -1,359 +1,315 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.services
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
-import android.widget.Toast
-import androidx.core.content.ContextCompat
+import android.os.SystemClock
 import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.content.edit
-import androidx.preference.PreferenceManager
 import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.services.UpdateChecker.Companion.ASSET_NAME
 import com.github.damontecres.wholphin.services.hilt.StandardOkHttpClient
 import com.github.damontecres.wholphin.ui.isNotNullOrBlank
-import com.github.damontecres.wholphin.ui.showToast
 import com.github.damontecres.wholphin.util.Version
 import com.github.damontecres.wholphin.util.WholphinDispatchers
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import timber.log.Timber
-import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
-import java.util.Date
+import kotlinx.serialization.json.*
+import okhttp3.*
+import java.io.*
+import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.milliseconds
+import kotlin.coroutines.resumeWithException
 
-/**
- * Checks if an app update is available
- */
+internal data class LunocoUpdateState(
+    val release: Release? = null,
+    val manual: Boolean = false,
+    val checking: Boolean = false,
+    val downloading: Boolean = false,
+    val percent: Int = 0,
+    val notice: Int? = null,
+)
+
+internal class UpdateSessionPolicy {
+    var prompted = false
+    fun mayCheck(now: Long, next: Long, manual: Boolean) = manual || now >= next
+    fun mayPrompt(manual: Boolean, ready: Boolean, idleMs: Long, resumed: Boolean, windowFocused: Boolean) =
+        resumed && windowFocused && (manual || (ready && !prompted && idleMs >= 30_000))
+}
+
+/** The existing updater, restricted to Lunoco's official release assets and app-private files. */
 @Singleton
-class UpdateChecker
-    @Inject
-    constructor(
-        @param:ApplicationContext private val context: Context,
-        @param:StandardOkHttpClient private val okHttpClient: OkHttpClient,
-    ) {
-        companion object {
-            const val ASSET_NAME = "Wholphin"
-            const val APK_NAME = "$ASSET_NAME.apk"
+class UpdateChecker @Inject constructor(
+    @param:ApplicationContext private val context: Context,
+    @param:StandardOkHttpClient client: OkHttpClient,
+) {
+    companion object {
+        // Legacy release-fixture filename helper only. No upstream network feed remains.
+        const val ASSET_NAME = "Wholphin"
+        const val APK_NAME = "Lunoco.apk"
+        val ACTIVE = BuildConfig.UPDATING_ENABLED // inherited customizable feed remains disabled
+        val GITHUB_ENABLED = BuildConfig.LUNOCO_GITHUB_UPDATES_ENABLED
+        private const val DAY = 86_400_000L
+    }
+    private val client = client.newBuilder().followRedirects(false).followSslRedirects(false)
+        .connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(120, TimeUnit.SECONDS).build()
+    private val preferences by lazy { context.getSharedPreferences("lunoco_updates", Context.MODE_PRIVATE) }
+    @Volatile private var manualRequested = false
+    private val mutex = Mutex()
+    private val downloadMutex = Mutex()
+    @Volatile private var checkingJob: Job? = null
+    internal fun cancelCheck() { checkingJob?.cancel() }
+    private val mutableState = MutableStateFlow(LunocoUpdateState())
+    internal val state = mutableState.asStateFlow()
+    internal val session = UpdateSessionPolicy()
+    @Volatile internal var homeReady = false
+    @Volatile private var lastInput = SystemClock.elapsedRealtime()
+    internal fun userInteraction() { lastInput = SystemClock.elapsedRealtime() }
+    internal fun idleMs() = SystemClock.elapsedRealtime() - lastInput
+    private val directory get() = File(context.cacheDir, "updates").apply { mkdirs() }
 
-            private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+    internal fun stableBuild(): Boolean = BuildConfig.LUNOCO_STABLE_RELEASE
 
-            private val NOTE_REGEX = Regex("<!-- app-note:(.+) -->")
+    internal fun storeManaged(): Boolean = !GITHUB_ENABLED || runCatching {
+        @Suppress("DEPRECATION")
+        context.packageManager.getInstallerPackageName(context.packageName) == "com.android.vending"
+    }.getOrDefault(false)
 
-            val ACTIVE = BuildConfig.UPDATING_ENABLED
+    internal fun settingsAvailable(): Boolean = stableBuild() && !storeManaged()
+
+    /** The normal startup preference gate; manual checks remain independent. */
+    internal suspend fun checkAutomatically(enabled: Boolean) {
+        if (GITHUB_ENABLED && enabled) checkForUpdates(manual = false)
+    }
+
+    internal suspend fun checkForUpdates(manual: Boolean) {
+        if (storeManaged()) {
+            if (manual) mutableState.value = LunocoUpdateState(notice = R.string.lunoco_updates_store)
+            return
         }
+        if (!stableBuild()) {
+            if (manual) mutableState.value = LunocoUpdateState(notice = R.string.lunoco_updates_development)
+            return
+        }
+        if (!manual && !session.mayCheck(System.currentTimeMillis(), preferences.getLong("next_check", 0), false)) return
+        if (!mutex.tryLock()) {
+            if (manual) {
+                manualRequested = true
+                mutableState.value = mutableState.value.copy(manual = true)
+            }
+            return
+        }
+        manualRequested = manual
+        checkingJob = currentCoroutineContext().job
+        try {
+            val now = System.currentTimeMillis()
+            if (!session.mayCheck(now, preferences.getLong("next_check", 0), manual)) return
+            // Persist attempts, including offline/rate-limited outcomes, before any network work.
+            preferences.edit { putLong("next_check", now + DAY) }
+            mutableState.value = LunocoUpdateState(checking = true, manual = manual)
+            val release = fetchRelease()
+            val update = release?.update
+            val installed = installedInfo()
+            val stable = stableBuild()
+            val eligible = update != null && LunocoReleaseProtocol.eligible(update,
+                installed.versionName.orEmpty(), PackageInfoCompat.getLongVersionCode(installed), stable)
+            val showManually = manualRequested || mutableState.value.manual
+            mutableState.value = when {
+                eligible && (showManually || !session.prompted) -> LunocoUpdateState(release = release, manual = showManually)
+                showManually && !stable -> LunocoUpdateState(notice = R.string.lunoco_updates_development)
+                showManually -> LunocoUpdateState(notice = R.string.lunoco_updates_current)
+                else -> LunocoUpdateState()
+            }
+        } catch (ex: CancellationException) {
+            mutableState.value = LunocoUpdateState()
+            throw ex
+        } catch (_: Exception) {
+            mutableState.value = LunocoUpdateState(notice = if (manualRequested || mutableState.value.manual) R.string.lunoco_updates_failed else null)
+        } finally { checkingJob = null; manualRequested = false; mutex.unlock() }
+    }
 
-        /**
-         * If the app hasn't recently checked, check for any updates and if there is one, show a toast message
-         *
-         * This is safe to call many times because it will only show the toast at most once every 12 hours
-         */
-        suspend fun maybeShowUpdateToast(
-            updateUrl: String,
-            showNegativeToast: Boolean = false,
-        ) {
-            val pref = PreferenceManager.getDefaultSharedPreferences(context)
-            val now = Date()
-            val lastUpdateCheckThreshold =
-                pref
-                    .getLong(context.getString(R.string.pref_key_update_last_check_threshold), 12)
-                    .hours
-            val lastUpdateCheck =
-                pref.getLong(
-                    context.getString(R.string.pref_key_update_last_check),
-                    0,
-                )
-            val timeSince = (now.time - lastUpdateCheck).milliseconds
-            Timber.v("Last successful update check was $timeSince ago")
-            val installedVersion = getInstalledVersion()
-            val latestRelease = getLatestRelease(updateUrl)
-            if (latestRelease != null && latestRelease.version.isGreaterThan(installedVersion)) {
-                Timber.v("Update available $installedVersion => ${latestRelease.version}")
-                pref.edit {
-                    putLong(context.getString(R.string.pref_key_update_last_check), now.time)
-                }
-                if (lastUpdateCheckThreshold >= timeSince) {
-                    Timber.i(
-                        "Skipping update notification, threshold is $lastUpdateCheckThreshold",
-                    )
-                } else {
-                    showToast(
-                        context,
-                        "Update available: $installedVersion => ${latestRelease.version}!",
-                        Toast.LENGTH_LONG,
-                    )
-                }
-            } else {
-                Timber.v("No update available for $installedVersion")
-                if (showNegativeToast) {
-                    showToast(
-                        context,
-                        "No updates available, $installedVersion is the latest!",
-                        Toast.LENGTH_LONG,
-                    )
-                }
+    internal fun presented() { session.prompted = true }
+    internal fun dismiss() { mutableState.value = LunocoUpdateState() }
+    internal fun consumeNotice() { mutableState.value = mutableState.value.copy(notice = null) }
+    fun getInstalledVersion(): Version = Version.fromString(installedInfo().versionName.orEmpty())
+    private fun installedInfo(): PackageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+
+    // Compatibility entry points always use the fixed official API, never a saved/custom URL.
+    suspend fun maybeShowUpdateToast(updateUrl: String, showNegativeToast: Boolean = false) = checkForUpdates(showNegativeToast)
+    suspend fun getLatestRelease(updateUrl: String): Release? =
+        if (storeManaged() || !stableBuild()) null else fetchRelease()
+    suspend fun getRelease(version: Version): Release? = getLatestRelease("")?.takeIf { it.version == version }
+
+    private suspend fun fetchRelease(): Release? = withContext(WholphinDispatchers.IO) {
+        val raw = get(LunocoReleaseProtocol.API).use { response ->
+            if (response.code == 404) return@withContext null
+            if (response.code == 403 || response.code == 429) {
+                val reset = response.header("X-RateLimit-Reset")?.toLongOrNull()?.times(1000) ?: 0
+                val retry = response.header("Retry-After")?.toLongOrNull()?.times(1000)?.plus(System.currentTimeMillis()) ?: 0
+                preferences.edit { putLong("next_check", maxOf(System.currentTimeMillis() + DAY,
+                    minOf(maxOf(reset, retry), System.currentTimeMillis() + 7 * DAY))) }
+            }
+            check(response.isSuccessful)
+            boundedText(response, 1_048_576)
+        }
+        val assets = LunocoReleaseProtocol.assets(raw) ?: return@withContext null
+        val manifest = get(assets.manifestUrl).use { check(it.isSuccessful); boundedText(it, 16384) }
+        val metadata = LunocoReleaseProtocol.metadata(assets, manifest, context.packageName)
+        Release(Version.fromString(metadata.versionName), metadata.apkUrl, null, assets.notes,
+            emptyList(), metadata)
+    }
+
+    private suspend fun get(url: String): Response {
+        var next = url
+        repeat(5) {
+            check(next == LunocoReleaseProtocol.API || LunocoReleaseProtocol.trustedDownload(next))
+            val request = Request.Builder().url(next).header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "Lunoco").get().build()
+            val response = client.newCall(request).awaitResponse()
+            if (response.code !in listOf(301, 302, 303, 307, 308)) return response
+            val location = response.header("Location")
+            val resolved = location?.let { response.request.url.resolve(it)?.toString() }
+            response.close()
+            check(url != LunocoReleaseProtocol.API && resolved != null &&
+                LunocoReleaseProtocol.trustedDownload(resolved))
+            next = requireNotNull(resolved)
+        }
+        error("Too many redirects")
+    }
+
+    private fun boundedText(response: Response, max: Int): String {
+        val output = ByteArrayOutputStream()
+        response.body.byteStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val n = input.read(buffer); if (n < 0) break
+                check(output.size() + n <= max); output.write(buffer, 0, n)
             }
         }
+        return output.toString("UTF-8")
+    }
 
-        /**
-         * Get the currently installed version
-         */
-        fun getInstalledVersion(): Version {
-            val pkgInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            return Version.fromString(pkgInfo.versionName!!)
-        }
-
-        suspend fun getRelease(version: Version): Release? {
-            val url =
-                "https://api.github.com/repos/damontecres/Wholphin/releases/tags/v${version.major}.${version.minor}.${version.patch}"
-            return withContext(WholphinDispatchers.IO) {
-                val request =
-                    Request
-                        .Builder()
-                        .url(url)
-                        .get()
-                        .build()
-                getRelease(request)
-            }
-        }
-
-        /**
-         * Get the latest released version
-         */
-        suspend fun getLatestRelease(updateUrl: String): Release? =
-            withContext(WholphinDispatchers.IO) {
-                val request =
-                    Request
-                        .Builder()
-                        .url(updateUrl)
-                        .get()
-                        .build()
-                getRelease(request)
-            }
-
-        private fun getRelease(request: Request): Release? {
-            return okHttpClient.newCall(request).execute().use {
-                if (it.isSuccessful) {
-                    val result = Json.parseToJsonElement(it.body.string())
-                    val name = result.jsonObject["name"]?.jsonPrimitive?.contentOrNull
-                    val version = Version.tryFromString(name)
-                    val publishedAt =
-                        result.jsonObject["published_at"]?.jsonPrimitive?.contentOrNull
-                    val body = result.jsonObject["body"]?.jsonPrimitive?.contentOrNull
-                    val downloadUrl =
-                        result.jsonObject["assets"]
-                            ?.jsonArray
-                            ?.let { assets -> getDownloadUrl(assets, BuildConfig.DEBUG) }
-                    Timber.v("version=$version, downloadUrl=$downloadUrl")
-                    if (version != null) {
-                        val notes =
-                            if (body.isNotNullOrBlank()) {
-                                NOTE_REGEX
-                                    .findAll(body)
-                                    .map { m ->
-                                        m.groupValues[1]
-                                    }.toList()
-                            } else {
-                                emptyList()
-                            }
-                        return@use Release(version, downloadUrl, publishedAt, body, notes)
-                    } else {
-                        Timber.w("Update version parsing failed. name=$name")
-                    }
-                } else {
-                    Timber.w("Update check failed ${it.code}: ${it.message}")
+    internal suspend fun download(release: Release, callback: DownloadCallback? = null): File = withContext(WholphinDispatchers.IO) {
+        check(!storeManaged())
+        check(downloadMutex.tryLock())
+        val target = File(directory, APK_NAME)
+        try {
+            val update = requireNotNull(release.update)
+            require(update.packageName == context.packageName && update.tag == "v" + update.versionName &&
+                update.apkUrl == LunocoReleaseProtocol.assetUrl(update.tag, APK_NAME) &&
+                update.bytes in 1..LunocoReleaseProtocol.MAX_APK_BYTES && Regex("[a-f0-9]{64}").matches(update.sha256))
+            check(LunocoReleaseProtocol.eligible(update, installedInfo().versionName.orEmpty(),
+                PackageInfoCompat.getLongVersionCode(installedInfo()), stableBuild()))
+            cleanup()
+            check(directory.usableSpace > update.bytes + 16 * 1024 * 1024) { "Insufficient storage" }
+            mutableState.value = mutableState.value.copy(downloading = true, percent = 0)
+            callback?.contentLength(update.bytes)
+            get(update.apkUrl).use { response ->
+                val cancelBody = launch(start = CoroutineStart.UNDISPATCHED) {
+                    try { awaitCancellation() } finally { response.close() }
                 }
-                return@use null
-            }
-        }
-
-        /**
-         * Download and install an update
-         */
-        @SuppressLint("RequestInstallPackagesPolicy")
-        suspend fun installRelease(
-            release: Release,
-            callback: DownloadCallback,
-        ) {
-            withContext(WholphinDispatchers.IO) {
-                cleanup()
-                val request =
-                    Request
-                        .Builder()
-                        .url(release.downloadUrl!!)
-                        .get()
-                        .build()
-                okHttpClient.newCall(request).execute().use {
-                    if (it.isSuccessful) {
-                        Timber.v("Request successful for ${release.downloadUrl}")
-                        callback.contentLength(it.body.contentLength())
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            val contentValues =
-                                ContentValues().apply {
-                                    put(MediaStore.MediaColumns.DISPLAY_NAME, APK_NAME)
-                                    put(MediaStore.MediaColumns.MIME_TYPE, APK_MIME_TYPE)
-                                    put(
-                                        MediaStore.MediaColumns.RELATIVE_PATH,
-                                        Environment.DIRECTORY_DOWNLOADS,
-                                    )
-                                }
-                            val resolver = context.contentResolver
-                            val uri =
-                                resolver.insert(
-                                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                                    contentValues,
-                                )
-                            if (uri != null) {
-                                it.body.byteStream().use { input ->
-                                    resolver.openOutputStream(uri).use { output ->
-                                        copyTo(input, output!!, callback = callback)
-                                    }
-                                }
-
-                                val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
-                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                                intent.data = uri
-                                context.startActivity(intent)
-                            } else {
-                                Timber.e("Resolver URI is null, trying fallback")
-//                                showToast(context, "Unable to download the apk")
-                                val targetFile = fallbackDownload(it, callback)
-                                val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
-                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                                intent.data =
-                                    FileProvider.getUriForFile(
-                                        context,
-                                        context.packageName + ".provider",
-                                        targetFile,
-                                    )
-                                context.startActivity(intent)
-                            }
-                        } else {
-                            val targetFile = fallbackDownload(it, callback)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                                val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
-                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                                intent.data =
-                                    FileProvider.getUriForFile(
-                                        context,
-                                        context.packageName + ".provider",
-                                        targetFile,
-                                    )
-                                context.startActivity(intent)
-                            } else {
-                                val intent = Intent(Intent.ACTION_VIEW)
-                                intent.setDataAndType(Uri.fromFile(targetFile), APK_MIME_TYPE)
-                                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
+                try {
+                check(response.isSuccessful)
+                val size = response.body.contentLength()
+                check(size == -1L || size == update.bytes)
+                val digest = MessageDigest.getInstance("SHA-256")
+                var total = 0L
+                target.outputStream().use { out ->
+                    response.body.byteStream().use { input ->
+                        val buffer = ByteArray(65536)
+                        var percent = -1
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val n = input.read(buffer)
+                            currentCoroutineContext().ensureActive()
+                            if (n < 0) break
+                            total += n; check(total <= update.bytes)
+                            digest.update(buffer, 0, n); out.write(buffer, 0, n)
+                            val p = (100 * total / update.bytes).toInt()
+                            if (p != percent) {
+                                percent = p
+                                mutableState.value = mutableState.value.copy(percent = p)
+                                callback?.bytesDownloaded(total)
                             }
                         }
-                    } else {
-                        Timber.v("Request failed for ${release.downloadUrl}: ${it.code}")
-                        showToast(context, "Error downloading the apk: ${it.code}")
                     }
                 }
+                check(total == update.bytes)
+                val actual = digest.digest().joinToString("") { "%02x".format(it) }
+                check(actual == update.sha256) { "Release checksum mismatch" }
+                } finally { cancelBody.cancel() }
             }
-        }
-
-        private suspend fun fallbackDownload(
-            response: Response,
-            callback: DownloadCallback,
-        ): File {
-            val downloadDir =
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            downloadDir.mkdirs()
-            val targetFile = File(downloadDir, APK_NAME)
-            targetFile.outputStream().use { output ->
-                response.body.byteStream().use { input ->
-                    copyTo(input, output, callback = callback)
-                }
-            }
-            return targetFile
-        }
-
-        /**
-         * Check if the app has permission to write the download
-         */
-        fun hasPermissions(): Boolean =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
-                (
-                    ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    ) == PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.READ_EXTERNAL_STORAGE,
-                        ) == PackageManager.PERMISSION_GRANTED
-                )
-
-        /**
-         * Delete previously downloaded APKs
-         */
-        fun cleanup() {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    context.contentResolver
-                        .query(
-                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                            arrayOf(
-                                MediaStore.MediaColumns._ID,
-                                MediaStore.Files.FileColumns.DISPLAY_NAME,
-                            ),
-                            "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND ${MediaStore.MediaColumns.MIME_TYPE} = ?",
-                            arrayOf(context.getString(R.string.app_name) + "%", APK_MIME_TYPE),
-                            null,
-                        )?.use { cursor ->
-                            while (cursor.moveToNext()) {
-                                val id = cursor.getString(0)
-                                val displayName = cursor.getString(1)
-                                Timber.v("id=$id, displayName=$displayName")
-                            }
-                        }
-                    val deletedRows =
-                        context.contentResolver.delete(
-                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                            "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND ${MediaStore.MediaColumns.MIME_TYPE} = ?",
-                            arrayOf("$ASSET_NAME%", APK_MIME_TYPE),
-                        )
-                    Timber.i("Deleted $deletedRows rows")
-                } else {
-                    val downloadDir =
-                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    val targetFile = File(downloadDir, APK_NAME)
-                    if (targetFile.exists()) {
-                        targetFile.delete()
-                    }
-                }
-            } catch (ex: Exception) {
-                Timber.e(ex, "Exception during cleanup")
-            }
+            validateApk(target, update)
+            target
+        } catch (ex: Exception) {
+            target.delete()
+            currentCoroutineContext().ensureActive()
+            throw ex
+        } finally {
+            mutableState.value = mutableState.value.copy(downloading = false)
+            downloadMutex.unlock()
         }
     }
+
+    internal fun validateApk(file: File, update: LunocoUpdateMetadata) {
+        @Suppress("DEPRECATION")
+        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val archive = requireNotNull(context.packageManager.getPackageArchiveInfo(file.path, flags))
+        val installed = context.packageManager.getPackageInfo(context.packageName, flags)
+        if (Build.VERSION.SDK_INT >= 24) archive.applicationInfo?.let { require(it.minSdkVersion <= Build.VERSION.SDK_INT) }
+        fun signers(info: PackageInfo): Set<String> {
+            @Suppress("DEPRECATION")
+            val signatures = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
+            return signatures.orEmpty().map {
+                MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) }
+            }.toSet()
+        }
+        LunocoReleaseProtocol.validateArchive(update, archive.packageName, archive.versionName,
+            PackageInfoCompat.getLongVersionCode(archive), PackageInfoCompat.getLongVersionCode(installed),
+            signers(installed), signers(archive))
+    }
+
+    internal fun canInstall(): Boolean = Build.VERSION.SDK_INT < 26 || context.packageManager.canRequestPackageInstalls()
+    internal fun installationIntent(file: File): Intent {
+        check(!storeManaged() && canInstall())
+        return Intent(Intent.ACTION_VIEW).setDataAndType(
+            FileProvider.getUriForFile(context, context.packageName + ".provider", file),
+            "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    suspend fun installRelease(release: Release, callback: DownloadCallback) {
+        val file = download(release, callback)
+        withContext(Dispatchers.Main) {
+            try { context.startActivity(installationIntent(file).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            catch (ex: Exception) { cleanup(); throw ex }
+        }
+    }
+    fun hasPermissions() = true // app-private cache needs no storage permission
+    fun cleanup() { File(context.cacheDir, "updates").listFiles()?.forEach { it.delete() } }
+}
+
+private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { continuation ->
+    continuation.invokeOnCancellation { cancel() }
+    enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            if (continuation.isActive) continuation.resumeWithException(e)
+        }
+        override fun onResponse(call: Call, response: Response) {
+            continuation.resume(response) { _, value, _ -> value.close() }
+        }
+    })
+}
 
 @Serializable
 data class Release(
@@ -362,6 +318,7 @@ data class Release(
     val publishedAt: String?,
     val body: String?,
     val notes: List<String>,
+    val update: LunocoUpdateMetadata? = null,
 ) {
     val content =
         "# ${version}\n" +

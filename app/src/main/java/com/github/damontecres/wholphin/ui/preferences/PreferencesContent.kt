@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.preferences
 
 import android.widget.Toast
@@ -48,7 +49,6 @@ import com.github.damontecres.wholphin.ui.components.LoadingPage
 import com.github.damontecres.wholphin.ui.components.ScrollableDialog
 import com.github.damontecres.wholphin.ui.indexOfFirstOrNull
 import com.github.damontecres.wholphin.ui.nav.Destination
-import com.github.damontecres.wholphin.ui.playOnClickSound
 import com.github.damontecres.wholphin.ui.preferences.subtitle.SubtitleSettings
 import com.github.damontecres.wholphin.ui.serverSupportedMessage
 import com.github.damontecres.wholphin.ui.setup.ReleaseNotes
@@ -109,28 +109,18 @@ fun PreferencesContent(
         updateCache = false
     }
 
-    val updateState by updateVM.state.collectAsState()
-    val release = updateState.release
-    LaunchedEffect(preferences.updateUrl, preferences.autoCheckForUpdates) {
-        if (UpdateChecker.ACTIVE && preferences.autoCheckForUpdates) {
-            updateVM.init()
-        }
-    }
-
-    val movementSounds = false
-    val installedVersion = updateVM.currentVersion
     val installedVersionLabel = com.github.damontecres.wholphin.BuildConfig.VERSION_NAME
-    val updateAvailable =
-        remember(updateState.release) {
-            updateState.release?.version?.isGreaterThan(installedVersion) ?: false
-        }
-
+    val updater = com.github.damontecres.wholphin.ui.setup.LocalLunocoUpdater.current
+    val updatingEnabled = updater?.settingsAvailable() == true
 
     LunocoSettingsWorkspace(
         preferences = preferences,
         screen = preferenceScreenOption,
         message = serverVersionMessage,
         modifier = modifier,
+        entriesFor = { category, prefs, page ->
+            LunocoSettingsCatalog.workspaceEntries(category, prefs, preferenceScreenOption, page, updatingEnabled)
+        },
     ) { entry, focusModifier, interactionSource ->
         if (entry.preference == null || entry.destination != null) {
             LunocoPreferenceRow(
@@ -161,37 +151,12 @@ fun PreferencesContent(
             }
 
             AppPreference.Update -> {
+                val updater = com.github.damontecres.wholphin.ui.setup.LocalLunocoUpdater.current
                 ClickPreference(
-                    title =
-                        if (release != null && updateAvailable) {
-                            stringResource(R.string.install_update)
-                        } else if (!preferences.autoCheckForUpdates && release == null) {
-                            stringResource(R.string.check_for_updates)
-                        } else {
-                            stringResource(R.string.no_update_available)
-                        },
-                    onClick = {
-                        if (movementSounds) playOnClickSound(context)
-                        if (release != null && updateAvailable) {
-                            release?.let {
-                                viewModel.navigationManager.navigateTo(
-                                    Destination.UpdateApp,
-                                )
-                            }
-                        } else {
-                            updateVM.init()
-                        }
-                    },
-                    onLongClick = {
-                        if (movementSounds) playOnClickSound(context)
-                        viewModel.navigationManager.navigateTo(Destination.UpdateApp)
-                    },
-                    summary =
-                        if (updateAvailable) {
-                            release?.version?.toString()
-                        } else {
-                            null
-                        },
+                    title = stringResource(R.string.check_for_updates),
+                    onClick = { scope.launch { updater?.checkForUpdates(manual = true) } },
+                    onLongClick = null,
+                    summary = installedVersionLabel,
                     interactionSource = interactionSource,
                     modifier = focusModifier,
                 )
@@ -607,7 +572,7 @@ fun PreferencesContent(
                         )
                         Text(text = installedVersionLabel, color = MaterialTheme.colorScheme.onSurface)
                         Text(
-                            text = stringResource(R.string.jellylu_attribution),
+                            text = stringResource(R.string.jellylu_description),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }

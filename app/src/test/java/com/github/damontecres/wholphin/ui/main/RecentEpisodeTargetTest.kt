@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -29,7 +30,7 @@ class RecentEpisodeTargetTest {
     @Test fun exactEpisodeWinsWithoutLatestQuery() = runTest {
         val exact = episode(7)
         val selected = resolveRecentEpisodeTarget(recent, BaseItem(exact), series,
-            { assertEquals(exact.id, it); exact }, { error("Must retain exact ID") })
+            { error("Complete card metadata must avoid a second episode query") }, { error("Must retain exact ID") })
         assertEquals(exact.id, selected?.episodeId)
         assertEquals(season, selected?.seasonId)
         assertEquals(3, selected?.seasonNumber)
@@ -63,7 +64,7 @@ class RecentEpisodeTargetTest {
         ).forEach { assertNull(recentEpisodeIds(it, series)) }
     }
     @Test fun unavailableExactEpisodeFallsBackWithoutChoosingAnother() = runTest {
-        assertNull(resolveRecentEpisodeTarget(recent, BaseItem(episode(7)), series,
+        assertNull(resolveRecentEpisodeTarget(recent, BaseItem(episode(7).copy(seasonId = null, parentId = null)), series,
             { error("404") }, { error("No replacement episode allowed") }))
     }
     @Test fun continueWatchingNextUpAndOrdinaryEntriesNeverQuery() = runTest {
@@ -85,17 +86,43 @@ class RecentEpisodeTargetTest {
         assertEquals(user, request.userId)
         assertEquals(series, request.parentId)
         assertEquals(listOf(BaseItemKind.EPISODE), request.includeItemTypes)
-        assertEquals(listOf(ItemSortBy.DATE_CREATED), request.sortBy)
-        assertEquals(listOf(SortOrder.DESCENDING), request.sortOrder)
+        assertEquals(listOf(ItemSortBy.DATE_CREATED, ItemSortBy.SORT_NAME), request.sortBy)
+        assertEquals(listOf(SortOrder.DESCENDING, SortOrder.ASCENDING), request.sortOrder)
         assertEquals(20, request.limit)
         assertNull(request.isPlayed)
     }
     @Test fun cancellationPropagates() = runTest {
         try {
-            resolveRecentEpisodeTarget(recent, BaseItem(episode(7)), series,
+            resolveRecentEpisodeTarget(recent, BaseItem(episode(7).copy(seasonId = null, parentId = null)), series,
                 { throw CancellationException() }, { emptyList() })
             fail("Cancellation must propagate")
         } catch (_: CancellationException) { }
+    }
+    @Test fun newestAdditionAcrossSeasonsUsesActualIdsIncludingSpecials() = runTest {
+        val seasonTwo = episode(6, 9).copy(seasonId = UUID(2, 2), parentIndexNumber = 2)
+        val seasonNine = episode(8, 3).copy(seasonId = UUID(2, 9), parentIndexNumber = 9)
+        assertEquals(seasonTwo.id, latest(listOf(seasonNine, seasonTwo))?.episodeId)
+        assertEquals(seasonTwo.seasonId, latest(listOf(seasonNine, seasonTwo))?.seasonId)
+        val special = episode(1, 10).copy(seasonId = UUID(2, 0), parentIndexNumber = 0)
+        assertEquals(special.id, latest(listOf(seasonTwo, special))?.episodeId)
+    }
+    @Test fun equalAdditionDatesUseSortNameThenExactIdDeterministically() = runTest {
+        val a = episode(1, 8).copy(sortName = "A")
+        val b = episode(2, 8).copy(sortName = "B")
+        assertEquals(a.id, latest(listOf(b, a))?.episodeId)
+        val sameName = b.copy(sortName = "A")
+        assertEquals(a.id, latest(listOf(sameName, a))?.episodeId)
+    }
+    @Test fun wholeSeasonBatchUsesStableSortNameAndAmbiguousTruncatedTieFallsBack() = runTest {
+        val batch = (1..20).map { episode(it, 8).copy(sortName = it.toString().padStart(3, '0')) }
+        assertEquals(batch.first().id, latest(batch)?.episodeId)
+        assertNull(latest(batch.map { it.copy(sortName = "same") }))
+    }
+    @Test fun duplicateSeriesNamesCannotCrossActualSeriesIdsAndEmptySeriesFallsBack() = runTest {
+        val foreign = episode(7, 9).copy(seriesId = UUID(99, 1))
+        assertEquals(episode(2).id, latest(listOf(foreign, episode(2)))?.episodeId)
+        assertNull(latest(emptyList()))
+        assertNull(latest(listOf(foreign)))
     }
     @Test fun focusLookupUsesExactIdWithMissingReorderedNumbers() = runTest {
         val ep = episode(7)

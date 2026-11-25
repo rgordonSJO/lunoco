@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.util
 
 import android.util.Log
@@ -20,7 +21,7 @@ class DebugLogTree private constructor() : Timber.Tree() {
         message: String,
         t: Throwable?,
     ) {
-        Log.println(priority, tag ?: "Wholphin", message)
+        Log.println(priority, tag ?: "Lunoco", message)
     }
 
     var enabled: Boolean

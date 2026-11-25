@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.preferences
 
 import com.github.damontecres.wholphin.R
@@ -15,13 +16,13 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class LunocoMinimalSettingsTest {
     private val defaults get() = AppPreferencesSerializer().defaultValue
-    private val primary get() = LunocoSettingsCatalog.primaryCategories.flatMap { LunocoSettingsCatalog.primaryEntries(it) }
+    private val primary get() = LunocoSettingsCatalog.primaryCategories.flatMap { LunocoSettingsCatalog.primaryEntries(it, updatingEnabled = true) }
 
-    @Test fun exactlyThreePrimarySectionsAndTenPurposefulRows() {
+    @Test fun exactlyThreePrimarySectionsAndTwelvePurposefulRows() {
         assertEquals(listOf(LunocoSettingsCategory.PLAYBACK, LunocoSettingsCategory.PROFILES, LunocoSettingsCategory.SUPPORT),
             LunocoSettingsCatalog.categories(PreferenceScreenOption.BASIC))
-        assertEquals(10, primary.size)
-        assertEquals(10, primary.map { it.id }.distinct().size)
+        assertEquals(12, primary.size)
+        assertEquals(12, primary.map { it.id }.distinct().size)
         assertEquals(R.string.lunoco_settings_connections,
             LunocoSettingsCatalog.categoryTitle(LunocoSettingsCategory.PROFILES, PreferenceScreenOption.BASIC))
         assertEquals(R.string.about,
@@ -48,15 +49,15 @@ class LunocoMinimalSettingsTest {
     }
 
     @Test fun aboutKeepsVersionLicenseAndDiscreetAdvancedAccessWithoutUploadActions() {
-        val rows = LunocoSettingsCatalog.primaryEntries(LunocoSettingsCategory.SUPPORT)
-        assertEquals(listOf("support.version","support.licenses","about.advanced"), rows.map { it.id })
+        val rows = LunocoSettingsCatalog.primaryEntries(LunocoSettingsCategory.SUPPORT, updatingEnabled = true)
+        assertEquals(listOf("support.version","support.update","support.update_auto","support.licenses","about.advanced"), rows.map { it.id })
         assertEquals(Destination.Settings(PreferenceScreenOption.ADVANCED), rows.last().destination)
         assertFalse(primary.any { it.preference in listOf(AppPreference.SendAppLogs, AppPreference.ClearImageCache,
-            AppPreference.Update, AppPreference.PlayerBackendPref, AppPreference.ThemeColors, AppPreference.CustomizeHome) })
+            AppPreference.PlayerBackendPref, AppPreference.ThemeColors, AppPreference.CustomizeHome) })
     }
 
-    @Test fun allNinetyTwoDescriptorsRemainReachableWithTheirExistingConditions() {
-        assertEquals(92, LunocoSettingsCatalog.inventory.size)
+    @Test fun allActiveDescriptorsRemainReachableWithTheirExistingConditions() {
+        assertEquals(91, LunocoSettingsCatalog.inventory.size)
         val reachable = PlayerBackend.entries.filter { it != PlayerBackend.UNRECOGNIZED }.flatMap { backend ->
             val prefs = defaults.updatePlaybackPreferences { playerBackend = backend }
                 .updateExperimentalPreferences { enabled = true }

@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22. -->
 <resources>
     <string name="brand_name" translatable="false">Lunoco</string>
     <string name="jellylu_settings_title" translatable="false">Lunoco · %1$s</string>
     <string name="jellylu_version_summary" translatable="false">Lunoco · %1$s</string>
-    <string name="jellylu_attribution" translatable="false">Based on Wholphin. Made for Jellyfin.</string>
+    <string name="jellylu_description" translatable="false">Lunoco — Jellyfin for Google TV</string>
+    <string name="jellylu_attribution" translatable="false">Lunoco is a modified fork of Wholphin by damontecres and contributors. The project includes the GNU General Public License, version 2.</string>
+    <string name="lunoco_source_notice" translatable="false">Source: github.com/rgordonSJO/lunoco\nUpstream: github.com/damontecres/Wholphin</string>
+    <string name="lunoco_gpl_notice">GNU GPL v2</string>
     <color name="jellylu_background">#0D1117</color>
     <color name="jellylu_ivory">#F1F0EC</color>
     <color name="jellylu_slate">#A7B9CB</color>

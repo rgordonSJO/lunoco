@@ -1,5 +1,10 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.nav
 
+import com.github.damontecres.wholphin.ui.setup.LocalLunocoUpdater
+import com.github.damontecres.wholphin.ui.theme.LunocoContentTheme
+import com.github.damontecres.wholphin.ui.setup.LunocoUpdateHost
+import com.github.damontecres.wholphin.ui.setup.observeUpdateInteraction
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -77,7 +82,7 @@ fun ApplicationContent(
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     Box(
-        modifier = modifier,
+        modifier = modifier.observeUpdateInteraction(LocalLunocoUpdater.current),
     ) {
         val backdropStyle = preferences.appPreferences.interfacePreferences.backdropStyle
         // Poster browsing stays flat. Detail pages keep their stable item artwork.
@@ -136,5 +141,6 @@ fun ApplicationContent(
                 }
             },
         )
+        LunocoContentTheme { LunocoUpdateHost(top) }
     }
 }

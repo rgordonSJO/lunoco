@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 @file:kotlin.OptIn(ExperimentalMaterial3Api::class)
 
 package com.github.damontecres.wholphin.ui.playback.overlay
@@ -71,6 +72,9 @@ import com.github.damontecres.wholphin.ui.AppColors
 import com.github.damontecres.wholphin.ui.FontAwesome
 import com.github.damontecres.wholphin.ui.PreviewTvSpec
 import com.github.damontecres.wholphin.ui.components.Button
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.lunocoActionColors
 import com.github.damontecres.wholphin.ui.components.SelectedLeadingContent
 import com.github.damontecres.wholphin.ui.components.TextButton
 import com.github.damontecres.wholphin.ui.formatDuration
@@ -152,6 +156,7 @@ fun PlaybackControls(
     modifier: Modifier = Modifier,
     initialFocusRequester: FocusRequester = remember { FocusRequester() },
     seekBarInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    scrubPositionMs: Long? = null,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -177,6 +182,7 @@ fun PlaybackControls(
             controllerViewState = controllerViewState,
             onSeekProgress = onSeekProgress,
             interactionSource = seekBarInteractionSource,
+            scrubPositionMs = scrubPositionMs,
             isEnabled = seekEnabled,
             intervals = seekBarIntervals,
             seekBack = seekBack,
@@ -249,6 +255,7 @@ fun SeekBar(
     seekForward: Duration,
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    scrubPositionMs: Long? = null,
 ) {
     var bufferedProgress by remember(player) { mutableFloatStateOf(player.bufferedPosition.toFloat() / player.duration) }
     var position by remember(player) { mutableLongStateOf(player.currentPosition) }
@@ -266,7 +273,9 @@ fun SeekBar(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         IntervalSeekBarImpl(
-            progress = progress,
+            progress = if (scrubPositionMs != null && player.duration > 0) {
+                (scrubPositionMs.toDouble() / player.duration).toFloat().coerceIn(0f, 1f)
+            } else progress,
             bufferedProgress = bufferedProgress,
             onSeek = {
                 onSeekProgress(it)
@@ -281,7 +290,7 @@ fun SeekBar(
             seekForward = seekForward,
         )
         SeekTimecodes(
-            positionMs = position,
+            positionMs = scrubPositionMs ?: position,
             durationMs = player.duration,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -479,11 +488,11 @@ fun PlaybackButton(
         enabled = enabled,
         onClick = onClick,
 //        shape = ButtonDefaults.shape(CircleShape),
-        colors =
-            ClickableSurfaceDefaults.colors(
-                containerColor = AppColors.TransparentBlack25,
-                focusedContainerColor = selectedColor,
-            ),
+        colors = if (LocalLunocoContentStyle.current) lunocoActionColors()
+        else ClickableSurfaceDefaults.colors(
+            containerColor = AppColors.TransparentBlack25,
+            focusedContainerColor = selectedColor,
+        ),
         contentPadding = PaddingValues(4.dp),
         interactionSource = interactionSource,
         modifier =
@@ -520,11 +529,11 @@ fun PlaybackFaButton(
         enabled = enabled,
         onClick = onClick,
 //        shape = ButtonDefaults.shape(CircleShape),
-        colors =
-            ClickableSurfaceDefaults.colors(
-                containerColor = AppColors.TransparentBlack25,
-                focusedContainerColor = selectedColor,
-            ),
+        colors = if (LocalLunocoContentStyle.current) lunocoActionColors()
+        else ClickableSurfaceDefaults.colors(
+            containerColor = AppColors.TransparentBlack25,
+            focusedContainerColor = selectedColor,
+        ),
         contentPadding = PaddingValues(4.dp),
         interactionSource = interactionSource,
         modifier =
@@ -598,8 +607,9 @@ fun <T> BottomDialog(
                     .wrapContentSize()
                     .padding(8.dp)
                     .background(
-                        MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        if (LocalLunocoContentStyle.current) LunocoContentStyle.Panel
+                        else MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+                        shape = if (LocalLunocoContentStyle.current) LunocoContentStyle.DialogShape else RoundedCornerShape(8.dp),
                     ),
         ) {
             LazyColumn(

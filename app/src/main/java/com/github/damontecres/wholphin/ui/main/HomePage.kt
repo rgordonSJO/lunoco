@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import androidx.activity.compose.BackHandler
@@ -21,11 +22,13 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -49,6 +52,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -129,6 +133,7 @@ fun HomePage(
     playlistViewModel: AddPlaylistViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val navigationInset = LocalHomeNavigationInset.current
     LifecycleStartEffect(Unit) {
         viewModel.init(refresh = viewModel.navigationManager.consumeHomeRefresh())
         onStopOrDispose { }
@@ -147,15 +152,37 @@ fun HomePage(
         spotlightViewModel.load(libraryItems, homeSession = homeSessionGeneration)
     }
 
+    val discoveryViewModel = hiltViewModel<MovieExploreViewModel>()
+    val discoveryState by discoveryViewModel.state.collectAsStateWithLifecycle()
+    val moviesLibrary = remember(libraryItems) {
+        jellyLuBrowseLinks(libraryItems).firstOrNull { it.tab == JellyLuBrowseTab.MOVIES }?.library?.itemId
+    }
+    val homeReady = loading == LoadingState.Success
+    val updater = com.github.damontecres.wholphin.ui.setup.LocalLunocoUpdater.current
+    DisposableEffect(updater, homeReady) {
+        updater?.homeReady = homeReady
+        onDispose { updater?.homeReady = false }
+    }
+    LaunchedEffect(moviesLibrary, homeReady) {
+        val library = moviesLibrary
+        if (library == null) discoveryViewModel.clearUnavailableLibrary()
+        else if (homeReady) {
+            // Start metadata as soon as Home is usable, without competing with its initial
+            // foreground rows. The scoped repository cache and ViewModel guard deduplicate
+            // re-entry; neither viewport changes nor card focus can restart this effect.
+            discoveryViewModel.load(library)
+        }
+    }
+
     when (val state = loading) {
         is LoadingState.Error -> {
-            ErrorMessage(state, modifier)
+            ErrorMessage(state, modifier.padding(top = navigationInset))
         }
 
         LoadingState.Loading,
         LoadingState.Pending,
         -> {
-            LoadingPage(modifier)
+            LoadingPage(modifier.padding(top = navigationInset))
         }
 
         LoadingState.Success -> {
@@ -260,31 +287,19 @@ fun HomePage(
                 LazyLayoutCacheWindow(aheadFraction = 1f, behindFraction = 2f)
             }
             val homeListState = rememberLazyListState(cacheWindow = homeCacheWindow)
-            val discoveryViewModel = hiltViewModel<MovieExploreViewModel>()
-            val discoveryState by discoveryViewModel.state.collectAsStateWithLifecycle()
-            val moviesLibrary = remember(libraryItems) {
-                jellyLuBrowseLinks(libraryItems).firstOrNull { it.tab == JellyLuBrowseTab.MOVIES }?.library?.itemId
-            }
             val presentedRows = remember(homeRows, moviesLibrary, discoveryState) {
                 homeRows + if (moviesLibrary != null) homeDiscoveryRows(
                     if (discoveryState.scope?.library == moviesLibrary) discoveryState
                     else com.github.damontecres.wholphin.ui.discovery.MovieExploreState()
                 ) else emptyList()
             }
-            LaunchedEffect(moviesLibrary, homeListState, homeRows.size) {
-                val library = moviesLibrary
-                if (library == null) { discoveryViewModel.clearUnavailableLibrary(); return@LaunchedEffect }
-                // Wait until the end of the existing feed approaches the viewport. No startup query,
-                // candidate scan, image prefetch or writes triggered by individual card focus.
-                snapshotFlow { homeListState.layoutInfo.visibleItemsInfo.any { it.index >= homeRows.size } }
-                    .first { it }
-                discoveryViewModel.load(library)
-            }
             val discoveryFacets = remember(discoveryState) {
                 (discoveryState.studios + discoveryState.genres).associateBy { it.id }
             }
             HomePageContent(
                 homeRows = presentedRows,
+                discoveryLoading = moviesLibrary != null &&
+                    (discoveryState.scope?.library != moviesLibrary || discoveryState.loading),
                 discoveryCard = { item, cardModifier, onClick ->
                     discoveryFacets[item.id]?.let { MovieFacetCard(it, onClick, cardModifier) }
                 },
@@ -396,6 +411,7 @@ fun HomePageContent(
     spotlightContent: (@Composable (FocusRequester, FocusRequester?) -> Unit)? = null,
     resetGeneration: Long = 0L,
     discoveryCard: (@Composable (BaseItem, Modifier, () -> Unit) -> Unit)? = null,
+    discoveryLoading: Boolean = false,
 ) {
     val rowKeys = remember(homeRows, jellyLuHome) { homeRowKeys(homeRows, jellyLuHome) }
     val rowFocusRequesters = remember(rowKeys) { List(homeRows.size) { FocusRequester() } }
@@ -403,11 +419,21 @@ fun HomePageContent(
     var firstFocused by remember { mutableStateOf(false) }
     val railFocus = LocalJellyLuRailFocus.current
     val spotlightFocus = remember { FocusRequester() }
-    val spotlightVisible = remember(listState) {
+    val navigationInset = LocalHomeNavigationInset.current
+    val navigationInsetPx = with(LocalDensity.current) { navigationInset.toPx() }
+    // Read the threshold only in draw: pixel scrolling cannot recompose navigation or rows.
+    val navigationBacking = remember(listState) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            homeNavigationBackdropRequired(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+        }
+    }
+    if (jellyLuHome) BindHomeNavigationScroll(navigationBacking)
+    val spotlightVisible = remember(listState, navigationInsetPx) {
         derivedStateOf {
             val layout = listState.layoutInfo
             layout.visibleItemsInfo.any { it.key == "jellylu_spotlight" &&
-                it.offset + it.size > layout.viewportStartOffset && it.offset < layout.viewportEndOffset }
+                it.offset + it.size > maxOf(layout.viewportStartOffset.toFloat(), navigationInsetPx) &&
+                    it.offset < layout.viewportEndOffset }
         }
     }
     var spotlightPlaced by remember { mutableStateOf(false) }
@@ -618,8 +644,8 @@ fun HomePageContent(
             val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides
-                    if (jellyLuHome) remember(density) {
-                        JellyLuHomeBringIntoViewSpec(spaceAbovePx)
+                    if (jellyLuHome) remember(density, navigationInsetPx) {
+                        JellyLuHomeBringIntoViewSpec(spaceAbovePx, spaceAbovePx + navigationInsetPx)
                     } else ScrollToTopBringIntoViewSpec(spaceAbovePx),
             ) {
                 LazyColumn(
@@ -627,9 +653,13 @@ fun HomePageContent(
                     verticalArrangement = Arrangement.spacedBy(if (jellyLuHome) 10.dp else 0.dp),
                     contentPadding =
                         PaddingValues(
+                            top = if (jellyLuHome && (spotlightContent == null ||
+                                (!spotlightAvailable && !spotlightPending))) navigationInset else 0.dp,
                             bottom = Cards.height2x3,
                         ),
                     modifier =
+                        // Draw the whole Home viewport behind the independent pinned pills.
+                        // Focus bring-into-view retains its separate navigation clearance above.
                         if (jellyLuHome) Modifier else Modifier.focusRestorer(),
                 ) {
                     if (jellyLuHome && spotlightContent != null) {
@@ -696,7 +726,15 @@ fun HomePageContent(
                                 }
 
                                 is HomeRowLoadingState.Success -> {
-                                    if (row.items.isNotEmpty()) {
+                                    // Reserve only the two existing discovery footprints while metadata
+                                    // is pending: real headings, no fake cards, artwork requests or focus
+                                    // targets. The same height applies after arrival, avoiding a row jump.
+                                    val discoveryRowHeight = if (discoveryCard != null) when (r.presentationKey) {
+                                        "lunoco_discovery:studios" -> 128.dp // 120dp card + 4dp above/below
+                                        "lunoco_discovery:genres" -> 118.dp // 110dp card + 4dp above/below
+                                        else -> 0.dp
+                                    } else 0.dp
+                                    if (row.items.isNotEmpty() || (discoveryLoading && discoveryRowHeight > 0.dp)) {
                                         val viewOptions =
                                             remember(jellyLuHome, classicHome, row.rowType, row.viewOptions) {
                                                 if (jellyLuHome) {
@@ -753,6 +791,7 @@ fun HomePageContent(
                                                 },
                                             modifier =
                                                 rowModifier
+                                                    .then(if (discoveryRowHeight > 0.dp) Modifier.testTag(r.presentationKey.orEmpty()) else Modifier)
                                                     .fillMaxWidth()
                                                     .focusProperties {
                                                         // Only the boundary above the first media row:
@@ -769,6 +808,7 @@ fun HomePageContent(
                                                     .focusGroup()
                                                     .focusRequester(rowFocusRequesters[rowIndex]),
                                             horizontalPadding = viewOptions.spacing.dp,
+                                            minimumRowHeight = discoveryRowHeight,
                                             cardContent = { index, item, cardModifier, onClick, onLongClick ->
                                                 val onFocus =
                                                     remember(rowIndex, index) {

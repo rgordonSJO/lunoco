@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import android.app.Application
@@ -212,4 +213,62 @@ class SpotlightArtworkUiTest {
         compose.mainClock.advanceTimeBy(250)
         assertTrue(compose.onNodeWithTag("art").captureToImage().toPixelMap()[100, 100].red > .99f)
     }
+    @Test fun framingPreservesTopBottomAndBothEdgeSubjects() {
+        fun source(w: Int, h: Int): Bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.DKGRAY)
+            val canvas = android.graphics.Canvas(this)
+            val paint = android.graphics.Paint()
+            paint.color = android.graphics.Color.RED
+            canvas.drawRect(0f, 0f, w.toFloat(), h / 6f, paint)
+            paint.color = android.graphics.Color.GREEN
+            canvas.drawRect(0f, h * 5f / 6, w.toFloat(), h.toFloat(), paint)
+            paint.color = android.graphics.Color.CYAN
+            canvas.drawRect(0f, h / 3f, w / 8f, h * 2f / 3, paint)
+            paint.color = android.graphics.Color.BLUE
+            canvas.drawRect(w * 7f / 8, h / 3f, w.toFloat(), h * 2f / 3, paint)
+        }
+        val cases = listOf("standard-16x9" to source(320,180), "cinematic-wide" to source(480,200),
+            "low-resolution" to source(32,18))
+        val shown = mutableStateOf<Painter>(BitmapPainter(cases.first().second.asImageBitmap()))
+        compose.setContent {
+            SpotlightArtwork(shown.value, Color.Black,
+                Modifier.width(960.dp).height(230.dp).testTag("framing"))
+        }
+        val lost = mutableListOf<String>()
+        for ((name, bitmap) in cases) {
+            compose.runOnIdle { shown.value = BitmapPainter(bitmap.asImageBitmap()) }
+            compose.waitForIdle()
+            val image = compose.onNodeWithTag("framing").captureToImage()
+            val output = java.io.File("build/reports/lunoco-updates-artwork-perf/artwork-$name.png")
+            output.parentFile!!.mkdirs()
+            output.outputStream().use { image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val scale = minOf(image.width.toFloat() / bitmap.width, image.height.toFloat() / bitmap.height)
+            val width = bitmap.width * scale
+            val height = bitmap.height * scale
+            val left = image.width - width
+            val top = (image.height - height) / 2
+            val pixels = image.toPixelMap()
+            fun sample(x: Float, y: Float) = pixels[x.toInt().coerceIn(0,image.width-1), y.toInt().coerceIn(0,image.height-1)]
+            val upper = sample(left + width / 2, top + height / 12)
+            val lower = sample(left + width / 2, top + height * 11 / 12)
+            val leftSubject = sample(left + width / 16, top + height / 2)
+            val rightSubject = sample(left + width * 15 / 16, top + height / 2)
+            if (!(upper.red > .9f && upper.green < .2f && lower.green > .9f && lower.red < .2f &&
+                    leftSubject.green > .9f && leftSubject.blue > .9f && rightSubject.blue > .9f && rightSubject.green < .2f)) lost += name
+        }
+        println("ARTWORK_EDGE_MARKER_CASES=3;LOST=$lost")
+        assertTrue("Source edge subjects/bands must survive without stretching: $lost", lost.isEmpty())
+    }
+
+    @Test fun portraitBackdropResponseUsesCharcoalInsteadOfZoomedPoster() {
+        renderFrame()
+        val portrait = mockk<SuccessResult> {
+            every { image } returns Bitmap.createBitmap(90,160,Bitmap.Config.ARGB_8888).asImage()
+        }
+        compose.runOnIdle { pending.getValue(a.name!!).complete(portrait) }
+        compose.waitUntil { frame?.ready == true }
+        assertEquals(a.id, frame?.movie?.id)
+        assertNull("Portrait-only source must retain movie metadata and safe fallback", frame?.painter)
+    }
+
 }

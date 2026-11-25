@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.main
 
 import android.content.Context
@@ -41,6 +42,7 @@ class SpotlightSessionTest {
 
     @Before fun setUp() {
         WholphinDispatchers.configure(dispatcher)
+        coEvery { repository.discard(any()) } returns Unit
         every { server.current } returns account
         every { server.currentServer } answers { account.value?.server }
         every { server.currentUser } answers { account.value?.user }

@@ -1,9 +1,13 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 // This file was inspired by related Button source files from
 // https://android.googlesource.com/platform/frameworks/support/+/refs/heads/androidx-main/tv/tv-material/src/main/java/androidx/tv/material3
 
 package com.github.damontecres.wholphin.ui.components
 
 import androidx.annotation.StringRes
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.lunocoActionColors
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +39,19 @@ import androidx.tv.material3.ProvideTextStyle
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 
+@Composable
+internal fun actionColors(primary: Boolean = false): ClickableSurfaceColors =
+    if (LocalLunocoContentStyle.current) lunocoActionColors(primary) else ClickableSurfaceDefaults.colors(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+        contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+        focusedContainerColor = MaterialTheme.colorScheme.onSurface,
+        focusedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        pressedContainerColor = MaterialTheme.colorScheme.onSurface,
+        pressedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+    )
+
 /**
  * This is a re-implementation of [androidx.tv.material3.Button] with altered sizing, padding, colors, etc
  *
@@ -52,22 +69,12 @@ fun Button(
         ClickableSurfaceDefaults.shape(
             shape = CircleShape,
         ),
-    colors: ClickableSurfaceColors =
-        ClickableSurfaceDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-            contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-            focusedContainerColor = MaterialTheme.colorScheme.onSurface,
-            focusedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
-            pressedContainerColor = MaterialTheme.colorScheme.onSurface,
-            pressedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-        ),
+    colors: ClickableSurfaceColors = actionColors(),
     tonalElevation: Dp = 0.dp,
     border: ClickableSurfaceBorder =
         ClickableSurfaceDefaults.border(
             border = Border.None,
-            focusedBorder = Border.None,
+            focusedBorder = if (LocalLunocoContentStyle.current) LunocoContentStyle.FocusBorder else Border.None,
             pressedBorder = Border.None,
             disabledBorder = Border.None,
             focusedDisabledBorder =

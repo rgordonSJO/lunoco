@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.detail
 
 import android.content.Context
@@ -198,6 +199,7 @@ class HomeRowGridViewModel
         }
 
         private var navigationJob: Job? = null
+        private val recentEpisodeTargets = com.github.damontecres.wholphin.ui.main.RecentEpisodeTargetCache()
 
         fun openItem(item: BaseItem) {
             navigationJob?.cancel()
@@ -206,7 +208,7 @@ class HomeRowGridViewModel
             val serverId = serverRepository.currentServer?.id
             navigationJob = viewModelScope.launch {
                 val destination = withContext(WholphinDispatchers.IO) {
-                    resolveRecentSeriesDestination(serverRepository.apiClient, user?.id, rowConfig, item)
+                    resolveRecentSeriesDestination(serverRepository.apiClient, user?.id, rowConfig, item, recentEpisodeTargets)
                 }
                 if (navigationManager.backStack.lastOrNull() == origin &&
                     serverRepository.currentUser?.id == user?.id && serverRepository.currentServer?.id == serverId

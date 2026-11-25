@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.playback.overlay
 
 /*
@@ -44,6 +45,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.colors.LunocoUiColors
 import com.github.damontecres.wholphin.ui.playback.ControllerViewState
 import com.github.damontecres.wholphin.ui.playback.calculateSeekAccelerationMultiplier
 import com.github.damontecres.wholphin.ui.playback.isDpadLeft
@@ -199,7 +202,7 @@ private fun SeekBarDisplay(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val color = MaterialTheme.colorScheme.primary
+    val color = if (LocalLunocoContentStyle.current) LunocoUiColors.Accent else MaterialTheme.colorScheme.primary
     val indicatorColor = MaterialTheme.colorScheme.border
     val onSurface = MaterialTheme.colorScheme.onSurface
 

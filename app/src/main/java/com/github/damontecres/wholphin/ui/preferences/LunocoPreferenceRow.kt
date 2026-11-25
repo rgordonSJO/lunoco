@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.preferences
 
 import androidx.activity.compose.BackHandler
@@ -33,6 +34,8 @@ import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.preferences.*
 import com.github.damontecres.wholphin.ui.nav.Destination
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
+import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import com.github.damontecres.wholphin.ui.theme.colors.LunocoUiColors
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import kotlin.math.roundToLong
@@ -69,8 +72,15 @@ fun LunocoPreferenceRow(
         modifier.fillMaxWidth().heightIn(min = 60.dp)
             .then(if (presentation != null) Modifier.testTag("settings-row-${presentation.id}") else Modifier)
             .onFocusChanged { focused = it.hasFocus }
-            .border(2.dp, if (focused) LunocoUiColors.FocusOutline else Color.Transparent, shape)
-            .background(if (focused) LunocoUiColors.CardFooter else Color.Transparent, shape)
+            .border(2.dp, if (focused) MaterialTheme.colorScheme.border else Color.Transparent, shape)
+            .background(
+                when {
+                    focused -> MaterialTheme.colorScheme.primaryContainer
+                    selected && LocalLunocoContentStyle.current -> LunocoContentStyle.Selected
+                    else -> Color.Transparent
+                },
+                shape,
+            )
             .semantics(mergeDescendants = true) {
                 this.selected = selected
                 if (checked != null) {
@@ -98,11 +108,11 @@ fun LunocoPreferenceRow(
         }
         if (trailing != null) trailing()
         else if (checked != null) Text(if (checked) on else off, fontSize = 16.sp,
-            color = if (checked) LunocoUiColors.Accent else MaterialTheme.colorScheme.onSurfaceVariant)
+            color = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         else if (!value.isNullOrBlank()) Text(value, fontSize = 16.sp, lineHeight = 22.sp,
             modifier = Modifier.widthIn(max = 176.dp),
             color = MaterialTheme.colorScheme.onSurface)
-        else if (selected) Text("✓", fontSize = 20.sp, color = LunocoUiColors.Accent)
+        else if (selected) Text("✓", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -124,8 +134,8 @@ internal fun LunocoChoiceSheet(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         CompositionLocalProvider(LocalLunocoSettingPresentation provides null) {
         Column(Modifier.widthIn(max = 520.dp).fillMaxWidth(.72f).heightIn(max = 440.dp)
-            .background(MaterialTheme.colorScheme.background, RoundedCornerShape(12.dp))
-            .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .3f), RoundedCornerShape(12.dp))
+            .background(LunocoContentStyle.Panel, LunocoContentStyle.DialogShape)
+            .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .3f), LunocoContentStyle.DialogShape)
             .padding(20.dp)) {
             Text(title, fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(bottom = 12.dp))

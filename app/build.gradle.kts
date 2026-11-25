@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.dsl.ProductFlavor
 import com.android.build.api.variant.FilterConfiguration
@@ -68,6 +69,18 @@ fun gitOutput(vararg arguments: String): String? =
 val gitTags = gitOutput("tag", "--list", "v*", "p*")
 val gitDescribe = gitOutput("describe", "--tags", "--long", "--match=v*")
 
+// Explicit, reviewed stable releases only. Local/performance suffixes are never release versions.
+val lunocoReleaseVersion = providers.gradleProperty("lunoco.releaseVersion").orNull
+val lunocoReleaseCode = providers.gradleProperty("lunoco.releaseVersionCode").orNull?.toIntOrNull()
+val lunocoStableRelease = lunocoReleaseVersion != null && lunocoReleaseCode != null
+check((lunocoReleaseVersion == null) == !providers.gradleProperty("lunoco.releaseVersionCode").isPresent) {
+    "Supply both lunoco.releaseVersion and lunoco.releaseVersionCode"
+}
+check(!lunocoStableRelease || (Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)").matches(lunocoReleaseVersion!!) &&
+    lunocoReleaseCode!! in 2..2_100_000_000)) { "Stable versionName/code invalid" }
+check(!providers.gradleProperty("lunoco.releaseVersionCode").isPresent || lunocoReleaseCode != null)
+
+
 kotlin {
     compilerOptions {
         languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_3
@@ -89,8 +102,9 @@ configure<ApplicationExtension> {
         applicationId = "com.ryan.lunatv.jellyfin"
         minSdk = libs.versions.minSdk.getInt()
         targetSdk = libs.versions.targetSdk.getInt()
-        versionCode = gitTags?.lineSequence()?.count { it.isNotBlank() }?.coerceAtLeast(1) ?: 1
-        versionName = gitDescribe?.removePrefix("v") ?: "0.0.0-local"
+        versionCode = lunocoReleaseCode ?: (gitTags?.lineSequence()?.count { it.isNotBlank() }?.coerceAtLeast(1) ?: 1)
+        versionName = lunocoReleaseVersion ?: gitDescribe?.removePrefix("v") ?: "0.0.0-local"
+        buildConfigField("boolean", "LUNOCO_STABLE_RELEASE", lunocoStableRelease.toString())
         testInstrumentationRunner = "com.github.damontecres.wholphin.test.WholphinTestRunner"
 
         buildConfigField("long", "BUILD_TIME", System.currentTimeMillis().toString())
@@ -143,6 +157,7 @@ configure<ApplicationExtension> {
             isShrinkResources = false
             isDebuggable = true
             applicationIdSuffix = ".debug"
+            buildConfigField("boolean", "LUNOCO_STABLE_RELEASE", "false")
         }
 
         // Isolated, release-optimized local diagnostic app; reuse the existing debug key.
@@ -153,7 +168,7 @@ configure<ApplicationExtension> {
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".performance"
-            versionNameSuffix =
+            versionNameSuffix = if (lunocoStableRelease) null else
                 "-perf-" + providers.gradleProperty("lunatv.performanceBuildId").orElse("local").get()
             matchingFallbacks += "release"
         }
@@ -174,20 +189,23 @@ configure<ApplicationExtension> {
             dimension = "version"
             isDefault = true
             manifestPlaceholders += mapOf(featureLeanback to false)
-            // LunaTV has no release feed; do not offer upstream Wholphin APKs as updates.
+            // Keep the inherited customizable/upstream updater disabled.
             setFeatureFlag(featureUpdate, false)
+            setFeatureFlag("LUNOCO_GITHUB_UPDATES_ENABLED", true)
             setFeatureFlag(featureDiscover, true)
         }
         create("appstore") {
             dimension = "version"
             manifestPlaceholders += mapOf(featureLeanback to true)
             setFeatureFlag(featureUpdate, false)
+            setFeatureFlag("LUNOCO_GITHUB_UPDATES_ENABLED", false)
             setFeatureFlag(featureDiscover, true)
         }
         create("firetv") {
             dimension = "version"
             manifestPlaceholders += mapOf(featureLeanback to true)
             setFeatureFlag(featureUpdate, false)
+            setFeatureFlag("LUNOCO_GITHUB_UPDATES_ENABLED", false)
             setFeatureFlag(featureDiscover, false)
         }
     }

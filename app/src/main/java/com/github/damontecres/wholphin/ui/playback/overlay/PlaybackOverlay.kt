@@ -1,7 +1,10 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.playback.overlay
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
@@ -38,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -94,6 +98,9 @@ fun PlaybackOverlay(
     trickplayUrlFor: (Int) -> String? = { null },
     onClickPlaylist: (BaseItem) -> Unit = {},
     seekBarInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    instantTimeline: Boolean = false,
+    scrubPositionMs: Long? = null,
+    scrubPreviewAlpha: () -> Float = { 1f },
 ) {
     val seekBarFocused by seekBarInteractionSource.collectIsFocusedAsState()
     // Will be used for preview/trick play images
@@ -213,6 +220,7 @@ fun PlaybackOverlay(
                                     controllerHeight = with(density) { it.size.height.toDp() }
                                 },
                         seekBarInteractionSource = seekBarInteractionSource,
+                    scrubPositionMs = scrubPositionMs,
                     )
                 }
 
@@ -260,15 +268,16 @@ fun PlaybackOverlay(
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             // Trickplay
             AnimatedVisibility(
-                visible = controllerViewState.controlsVisible && seekProgressPercent >= 0 && seekBarFocused,
-                enter =
+                visible = controllerViewState.controlsVisible && seekBarFocused &&
+                    (scrubPositionMs != null || (!instantTimeline && seekProgressPercent >= 0)),
+                enter = if (instantTimeline) EnterTransition.None else
                     expandVertically(
                         spring(
                             stiffness = Spring.StiffnessMedium,
                             visibilityThreshold = IntSize.VisibilityThreshold,
                         ),
                     ) + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
+                exit = if (instantTimeline) ExitTransition.None else shrinkVertically() + fadeOut()
             ) {
                 Box(
                     modifier =
@@ -282,12 +291,13 @@ fun PlaybackOverlay(
                         modifier =
                             Modifier
                                 .align(Alignment.BottomStart)
-                                .offsetByPercent(
-                                    xPercentage = seekProgressPercent.coerceIn(0f, 1f),
+                                .then(
+                                    if (instantTimeline) Modifier.graphicsLayer { alpha = scrubPreviewAlpha() }
+                                    else Modifier.offsetByPercent(seekProgressPercent.coerceIn(0f, 1f)),
                                 ).padding(bottom = controllerHeight - titleHeight - subtitleHeight),
                     ) {
                         TrickplayPreview(
-                            seekProgressMs = seekProgressMs,
+                            seekProgressMs = scrubPositionMs ?: seekProgressMs,
                             trickplayInfo = trickplayInfo,
                             trickplayUrlFor = trickplayUrlFor,
                         )

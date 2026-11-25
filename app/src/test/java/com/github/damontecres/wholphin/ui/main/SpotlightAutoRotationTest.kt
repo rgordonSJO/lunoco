@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 @file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 
 package com.github.damontecres.wholphin.ui.main
@@ -21,12 +22,11 @@ class SpotlightAutoRotationTest {
     @Before fun setUp() { Dispatchers.setMain(dispatcher) }
     @After fun tearDown() { Dispatchers.resetMain() }
 
-    @Test fun eligibilityRequiresMultipleMoviesVisibleAndNoControlInteraction() {
-        assertFalse(spotlightMayAutoRotate(0, false, true))
-        assertFalse(spotlightMayAutoRotate(1, false, true))
-        assertFalse(spotlightMayAutoRotate(5, true, true))
-        assertFalse(spotlightMayAutoRotate(5, false, false))
-        assertTrue(spotlightMayAutoRotate(5, false, true))
+    @Test fun eligibilityRequiresMultipleVisibleMoviesWithoutAFocusGate() {
+        assertFalse(spotlightMayAutoRotate(0, true))
+        assertFalse(spotlightMayAutoRotate(1, true))
+        assertFalse(spotlightMayAutoRotate(5, false))
+        assertTrue(spotlightMayAutoRotate(5, true))
     }
 
     @Test fun foregroundTicksEveryTenSecondsAndWrapsTheExistingIndex() = runTest(dispatcher) {

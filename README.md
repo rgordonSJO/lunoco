@@ -1,48 +1,23 @@
+<!-- Modified by Lunoco contributors on 2026-11-22 for the 0.11.0 source. -->
 # Lunoco — Jellyfin for Google TV
 
-A clean, simple Jellyfin experience designed for Google TV.
+Lunoco brings Jellyfin to Google TV with floating Home controls, movie discovery, and D-pad navigation. Press and hold Left or Right during playback to scrub through a movie. A quick tap uses your skip setting. Release to seek to the previewed position. Trickplay thumbnails remain visible briefly when available.
 
-Lunoco combines cinematic movie discovery, compact Continue Watching cards and polished D-pad navigation. Bring your own Jellyfin server and media.
+## Install on Google TV
 
-### Install on Google TV
+In Downloader by AFTVnews, enter code **7639133**. You can also [download Lunoco.apk](https://github.com/rgordonSJO/lunoco/releases/latest/download/Lunoco.apk) from the [official release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.0). If Google TV prompts you, allow Downloader to install the APK.
 
-**Downloader Code: 7639133**
+Install over a compatible existing copy of Lunoco to retain your settings and Jellyfin connection. An update requires the same package and signing identity and a compatible version code. Keep the existing installation if Google TV reports a conflict.
 
-1. Open the Google Play Store on your Google TV.
-2. Install Downloader by AFTVnews.
-3. Open Downloader and enter code 7639133.
-4. Download the Lunoco APK.
-5. If prompted, allow Downloader permission to install unknown apps.
-6. Install and open Lunoco.
-7. Connect Lunoco to your Jellyfin server.
+Connect Lunoco to your Jellyfin server. Lunoco supplies no media or server account. Playback uses Media3/ExoPlayer. The optional FFmpeg and AV1 extensions and working MPV are excluded from this release configuration.
 
-**Direct APK download:**
+## Source and credits
 
-https://github.com/rgordonSJO/lunoco/releases/latest/download/Lunoco.apk
+Lunoco is a modified version of [Wholphin](https://github.com/damontecres/Wholphin), by damontecres and contributors, distributed under [GNU GPL version 2](LICENSE). The source retains original author notices, translations and third-party acknowledgments. Thanks to the Jellyfin project, Jellyfin SDK and Android TV contributors.
 
-**Future updates:** Use the same Downloader code to download the latest stable APK. Install it over the existing Lunoco installation.
-
-## Features
-
-- Movie-only Spotlight with a daily stable lineup and ten-second rotation that pauses while its controls have focus.
-- Continue Watching and Recently Added; series entries open their overview with Play focused.
-- Curated studio and genre discovery on Home and in Movies/Kids Movies Explore.
-- Home, Movies, Shows, Live TV and Home Movies navigation, with family-library and DVR dropdowns.
-- Smart Back navigation that restores your browsing position and reveals Spotlight from scrolled Home.
-- Simple Playback, Connections and About settings, with retained Advanced options.
-
-Playback uses Media3/ExoPlayer. Working MPV and the optional FFmpeg/AV1 extensions are not included. In-app Wholphin update checks remain disabled; use the Downloader code or direct link above for Lunoco updates.
-
-## Release and compatibility
-
-The current release is [v0.10.2](https://github.com/rgordonSJO/lunoco/releases/tag/v0.10.2). See [release identity](RELEASE-IDENTITY.json) for its checksum, signer and technical Android version information. Package: `com.ryan.lunatv.jellyfin.performance`.
-
-Tested on an onn. 4K Plus Google TV running Android 14 at 1920×1080. Compatibility with every television, codec and server configuration is not established. Rendering performance remains under investigation. Some native screenshot captures intermittently omit top-navigation graphics; a live-display defect has not been confirmed.
-
-## Source, license and credits
-
-Lunoco is a modified version of **Wholphin**, created by damontecres and contributors, and distributed under [GNU GPL version 2](LICENSE). Original source notices, translations and third-party acknowledgments are retained. Jellyfin, its SDK developers, the official Jellyfin Android TV contributors and the libraries listed in the in-app license screen made this work possible.
-
-Upstream project: [Wholphin](https://github.com/damontecres/Wholphin). All installation and release links above point to Lunoco.
-
-The app code/resources correspond to the published APK's verified development source. See [BUILDING.md](BUILDING.md), [RELEASING.md](RELEASING.md) and [THIRD_PARTY.md](THIRD_PARTY.md) for build instructions, the release process and dependency acknowledgments.
+- [Build the application](BUILDING.md)
+- [Release process](RELEASING.md)
+- [Third-party notices and source references](THIRD_PARTY.md)
+- [Changes from the public base](MODIFICATIONS.md)
+- [Corresponding source and native notices](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.0)
+- [Latest released APK identity](RELEASE-IDENTITY.json)

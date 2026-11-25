@@ -1,6 +1,8 @@
+// Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 package com.github.damontecres.wholphin.ui.components
 
 import androidx.compose.foundation.background
+import com.github.damontecres.wholphin.ui.theme.LocalLunocoContentStyle
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -302,7 +304,7 @@ fun EditTextBox(
                                 modifier = Modifier,
                                 colors = colors,
                                 shape = CircleShape,
-                                focusedIndicatorLineThickness = 4.dp,
+                                focusedIndicatorLineThickness = if (LocalLunocoContentStyle.current) 2.dp else 4.dp,
                                 unfocusedIndicatorLineThickness = 0.dp,
                             )
                         },
