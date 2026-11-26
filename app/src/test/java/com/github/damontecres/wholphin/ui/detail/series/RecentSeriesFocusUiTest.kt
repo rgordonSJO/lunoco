@@ -1,4 +1,5 @@
 // Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
+// Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
 
 import android.app.Application
@@ -63,10 +64,12 @@ class RecentSeriesFocusUiTest {
     private val series = BaseItem(BaseItemDto(id = UUID(1, 1), type = BaseItemKind.SERIES, name = "A series"))
     private val seasons = List(4) { BaseItem(BaseItemDto(id = UUID(2, it.toLong()), type = BaseItemKind.SEASON,
         indexNumber = it, name = "Season $it")) }
-    private val episodes = List(18) { BaseItem(BaseItemDto(id = UUID(3, it.toLong() + 1),
+    private val episodes = List(28) { BaseItem(BaseItemDto(id = UUID(3, it.toLong() + 1),
         type = BaseItemKind.EPISODE, name = "Episode ${it + 1}", indexNumber = it + 1,
-        parentIndexNumber = 3, seasonId = seasons[3].id, seriesId = series.id)) }
+        parentIndexNumber = 3, seasonId = seasons[3].id, seriesId = series.id,
+        overview = "Overview for episode ${it + 1}")) }
     private var selected = RecentSeriesEpisodes(seasons[3], 3, episodes, 6, episodes[6].id)
+    private var olderSeasonEpisodes = episodes
     private var selection by mutableStateOf<RecentSeriesEpisodes?>(null)
     private var loading by mutableStateOf(false)
     private var favorite by mutableStateOf(false)
@@ -104,6 +107,14 @@ class RecentSeriesFocusUiTest {
                         onClickDiscover = { _, _ -> }, discoverSeries = null, onClickDiscoverSeries = {},
                         recentEpisodes = selection, recentEpisodeLoading = loading,
                         recentEpisodeKey = routeTarget,
+                        onSelectRecentSeason = { season, index ->
+                            val seasonEpisodes = olderSeasonEpisodes.map {
+                                BaseItem(it.data.copy(parentIndexNumber = season.indexNumber, seasonId = season.id))
+                            }
+                            selection = RecentSeriesEpisodes(
+                                season, index, seasonEpisodes, 0, seasonEpisodes.firstOrNull()?.id,
+                            )
+                        },
                         onClickRecentEpisode = { clicked += it.id; if (openDetailsOnEpisode) seriesVisible = false },
                         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
                     ) }
@@ -118,10 +129,7 @@ class RecentSeriesFocusUiTest {
     @Test fun targetsSeasonThreeEpisodeSevenWithoutAutoplay() {
         render()
         episode(6).assertIsDisplayed().assertIsFocused()
-        val image = compose.onRoot().captureToImage().asAndroidBitmap()
-        val output = File("build/reports/ui-cohesion37/targeted-series.png")
-        output.parentFile!!.mkdirs()
-        output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        capture("targeted-series")
         assertTrue(clicked.isEmpty())
         episode(6).performKeyInput { pressKey(Key.DirectionCenter) }
         assertEquals(listOf(episodes[6].id), clicked)
@@ -198,6 +206,142 @@ class RecentSeriesFocusUiTest {
         compose.runOnIdle { seriesVisible = true }
         episode(7).assertIsDisplayed().assertIsFocused()
         assertEquals(listOf(episodes[7].id), clicked)
+    }
+
+    private fun capture(name: String, node: SemanticsNodeInteraction = compose.onRoot()) {
+        val image = node.captureToImage().asAndroidBitmap()
+        val output = File("build/reports/episode-browser-40a/$name.png")
+        output.parentFile!!.mkdirs()
+        output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+    }
+
+    @Test fun cardTitlesRemainVisibleAndEpisodeContextTracksFocus() {
+        render()
+        compose.onNodeWithText("E7 — Episode 7").assertIsDisplayed()
+        compose.onNodeWithText("E8 — Episode 8").assertIsDisplayed()
+        compose.onNodeWithText("Overview for episode 7").assertIsDisplayed()
+        episode(6).performKeyInput { pressKey(Key.DirectionRight) }
+        episode(7).assertIsFocused()
+        compose.onNodeWithText("Overview for episode 8").assertIsDisplayed()
+        compose.onNodeWithText("Overview for episode 7").assertDoesNotExist()
+        capture("different-episode")
+    }
+
+    @Test fun seasonControlIsOnePressUpAndReturnsToTheSameEpisode() {
+        render()
+        val season = compose.onNodeWithTag("episode-browser-season")
+        episode(6).performKeyInput { pressKey(Key.DirectionUp) }
+        season.assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+        episode(6).assertIsFocused()
+    }
+
+    private fun openPickerFromEpisode(index: Int, browse: Boolean = false) {
+        episode(index).performKeyInput { pressKey(Key.DirectionUp) }
+        val season = compose.onNodeWithTag("episode-browser-season").assertIsFocused()
+        if (browse) {
+            season.performKeyInput { pressKey(Key.DirectionRight) }
+            compose.onNodeWithTag("episode-browser-all").assertIsFocused()
+                .performKeyInput { pressKey(Key.DirectionCenter) }
+        } else {
+            season.performKeyInput { pressKey(Key.DirectionCenter) }
+        }
+    }
+
+    @Test fun chooseOlderSeasonAndBrowseToEarlierEpisodeWithoutPlaying() {
+        render()
+        openPickerFromEpisode(6)
+        val list = compose.onNodeWithTag("episode-browser-picker-list")
+        list.assertIsDisplayed()
+        capture("season-picker", list)
+        compose.onNodeWithTag("episode-browser-choice-3").assertIsFocused().performKeyInput {
+            repeat(2) { pressKey(Key.DirectionUp) }
+            pressKey(Key.DirectionCenter)
+        }
+        episode(0).assertIsFocused()
+        compose.onNodeWithText("Season 1 ▼").assertIsDisplayed()
+        compose.onNodeWithText("S1 E1 — Episode 1").assertIsDisplayed()
+        capture("older-season")
+        openPickerFromEpisode(0, browse = true)
+        compose.onNodeWithTag("episode-browser-choice-0").assertIsFocused().performKeyInput {
+            repeat(2) { pressKey(Key.DirectionDown) }
+            pressKey(Key.DirectionCenter)
+        }
+        episode(2).assertIsFocused()
+        assertTrue(clicked.isEmpty())
+    }
+
+    @Test fun missingTitleUsesNumberAndLongTitleKeepsCardVisible() {
+        val missing = BaseItem(episodes[6].data.copy(name = null, overview = null))
+        val long = BaseItem(episodes[7].data.copy(name = "A long episode title ".repeat(18)))
+        selected = selected.copy(episodes = episodes.toMutableList().apply {
+            this[6] = missing
+            this[7] = long
+        })
+        render()
+        episode(6).assertIsFocused()
+        compose.onNode(hasText("Episode 7") and
+            hasAnyAncestor(hasTestTag("episode-browser-context"))).assertIsDisplayed()
+        compose.onNodeWithText("Overview for episode 7").assertDoesNotExist()
+        capture("missing-metadata")
+        episode(6).performKeyInput { pressKey(Key.DirectionRight) }
+        episode(7).assertIsDisplayed().assertIsFocused()
+    }
+
+    @Test fun seasonZeroCanOpenASingleWatchedEpisode() {
+        val special = BaseItem(episodes[0].data.copy(
+            name = "The making of the series",
+            parentIndexNumber = 0,
+            seasonId = seasons[0].id,
+            userData = UserItemDataDto(
+                playbackPositionTicks = 0, played = true, playCount = 1,
+                isFavorite = false, key = "test", itemId = episodes[0].id,
+            ),
+        ))
+        selected = RecentSeriesEpisodes(seasons[0], 0, listOf(special), 0, special.id)
+        render()
+        episode(0).assertIsFocused()
+        compose.onNodeWithText("E1 — The making of the series").assertIsDisplayed()
+        compose.onNodeWithText("S0 E1 — The making of the series").assertIsDisplayed()
+        capture("special-watched")
+    }
+
+    @Test fun partiallyWatchedEpisodeStillShowsTitleAndContext() {
+        val partial = BaseItem(episodes[6].data.copy(
+            userData = UserItemDataDto(
+                playbackPositionTicks = 0, played = false, playedPercentage = 50.0,
+                playCount = 0, isFavorite = false, key = "test", itemId = episodes[6].id,
+            ),
+        ))
+        selected = selected.copy(episodes = episodes.toMutableList().apply { this[6] = partial })
+        render()
+        episode(6).assertIsFocused()
+        compose.onNodeWithText("E7 — Episode 7").assertIsDisplayed()
+        compose.onNodeWithText("Overview for episode 7").assertIsDisplayed()
+        capture("partially-watched")
+    }
+
+    @Test fun emptySeasonKeepsTheSeasonSelectorAvailable() {
+        olderSeasonEpisodes = emptyList()
+        render()
+        openPickerFromEpisode(6)
+        compose.onNodeWithTag("episode-browser-choice-3").assertIsFocused().performKeyInput {
+            repeat(3) { pressKey(Key.DirectionUp) }
+            pressKey(Key.DirectionCenter)
+        }
+        compose.onNodeWithTag("episode-browser-season").assertIsFocused()
+        compose.onNodeWithText("No episodes in this season.").assertIsDisplayed()
+        compose.onNodeWithTag("episode-browser-all").assertDoesNotExist()
+    }
+
+    @Test fun backFromInlineBrowserRestoresTheHighlightedEpisode() {
+        render()
+        episode(6).performKeyInput { pressKey(Key.DirectionRight) }
+        episode(7).assertIsFocused()
+        openPickerFromEpisode(7, browse = true)
+        compose.onNodeWithTag("episode-browser-picker-list").assertIsDisplayed()
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        episode(7).assertIsDisplayed().assertIsFocused()
+        assertTrue(clicked.isEmpty())
     }
 
     @Test fun ordinarySeriesKeepsPlayFocusAndNoRecentEpisodeRow() {

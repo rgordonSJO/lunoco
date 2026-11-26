@@ -5,3 +5,5 @@ On 2026-11-22, the Lunoco contributors incorporated the tested Phase 38C develop
 The main changes cover floating Home navigation and focus restoration, browsing and detail screens, accelerated D-pad scrubbing and persistent Trickplay preview, source attribution in the app, and the official GitHub stable updater protocol. Modified application, build and test text files carry dated notices in this tree. Required upstream copyright statements, GPL text and third-party attribution remain in place.
 
 [GPLv2](LICENSE) · [Third-party sources](THIRD_PARTY.md) · [Build instructions](BUILDING.md)
+
+On 2026-11-25, Lunoco contributors added the Recently Added television episode browser improvements, including persistent titles, focus-driven episode context, inline season and episode selection, and tests for D-pad and Back restoration. The release carries the original Phase 40A application logic and resources with dated source notices.

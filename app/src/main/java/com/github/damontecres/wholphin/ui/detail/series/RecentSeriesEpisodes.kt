@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
 
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -8,6 +9,7 @@ import com.github.damontecres.wholphin.util.BlockingList
 import com.github.damontecres.wholphin.util.GetEpisodesRequestHandler
 import kotlinx.coroutines.CoroutineScope
 import org.jellyfin.sdk.api.client.ApiClient
+import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.ItemSortBy
 import org.jellyfin.sdk.model.api.request.GetEpisodesRequest
 import java.util.UUID
@@ -17,7 +19,7 @@ data class RecentSeriesEpisodes(
     val seasonIndex: Int,
     val episodes: List<BaseItem?>,
     val episodeIndex: Int,
-    val episodeId: UUID,
+    val episodeId: UUID?,
 )
 
 /** Number is only a lookup hint; a missing ID must never focus a different numbered episode. */
@@ -47,17 +49,41 @@ internal suspend fun loadRecentSeriesEpisodes(
         (seasons as BlockingList<BaseItem?>).getBlocking(seasonIndex)
     } else seasons[seasonIndex]
     season ?: return null
-    val request = GetEpisodesRequest(
-        seriesId = seriesId, userId = userId, seasonId = season.id,
-        sortBy = ItemSortBy.INDEX_NUMBER, fields = ItemRowFields + listOf(
-            org.jellyfin.sdk.model.api.ItemFields.PARENT_ID, org.jellyfin.sdk.model.api.ItemFields.PLAY_ACCESS,
-        ),
-    )
-    val pager = ApiRequestPager(api, request, GetEpisodesRequestHandler, scope)
+    val pager = recentEpisodePager(api, userId, seriesId, season.id, scope)
     pager.init((target.episodeNumber?.minus(1) ?: 0).coerceAtLeast(0))
     val episodeIndex = exactRecentItemIndex(pager, episodeId, target.episodeNumber)
     if (episodeIndex < 0) return null
     val episode = pager.getBlocking(episodeIndex) ?: return null
     if (episode.id != episodeId || recentEpisodeIds(episode.data, seriesId)?.seasonId != season.id) return null
     return RecentSeriesEpisodes(season, seasonIndex, pager, episodeIndex, episodeId)
+}
+
+internal suspend fun loadRecentBrowserSeason(
+    api: ApiClient,
+    userId: UUID,
+    seriesId: UUID,
+    season: BaseItem,
+    seasonIndex: Int,
+    scope: CoroutineScope,
+): RecentSeriesEpisodes {
+    val pager = recentEpisodePager(api, userId, seriesId, season.id, scope)
+    pager.init(0)
+    val firstEpisode = if (pager.isNotEmpty()) pager.getBlocking(0) else null
+    return RecentSeriesEpisodes(season, seasonIndex, pager, 0, firstEpisode?.id)
+}
+
+private fun recentEpisodePager(
+    api: ApiClient,
+    userId: UUID,
+    seriesId: UUID,
+    seasonId: UUID,
+    scope: CoroutineScope,
+): ApiRequestPager<GetEpisodesRequest> {
+    val request = GetEpisodesRequest(
+        seriesId = seriesId, userId = userId, seasonId = seasonId,
+        sortBy = ItemSortBy.INDEX_NUMBER, fields = ItemRowFields + listOf(
+            ItemFields.PARENT_ID, ItemFields.PLAY_ACCESS, ItemFields.OVERVIEW,
+        ),
+    )
+    return ApiRequestPager(api, request, GetEpisodesRequestHandler, scope)
 }

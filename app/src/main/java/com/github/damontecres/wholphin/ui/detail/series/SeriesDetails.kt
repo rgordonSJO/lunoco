@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
 
 import android.content.res.Resources
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
@@ -43,7 +45,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
+
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -210,6 +212,8 @@ fun SeriesDetails(
                 similar = state.similar,
                 recentEpisodes = state.recentEpisodes,
                 recentEpisodeLoading = state.recentEpisodeLoading,
+                recentSeasonFailed = state.recentSeasonFailed,
+                onSelectRecentSeason = viewModel::selectRecentSeason,
                 recentEpisodeKey = destination.recentEpisode?.episodeId?.toString(),
                 onClickRecentEpisode = { viewModel.navigateTo(Destination.Playback(it)) },
                 played = played,
@@ -374,6 +378,8 @@ fun SeriesDetailsContent(
     recentEpisodeLoading: Boolean = false,
     recentEpisodeKey: String? = null,
     onClickRecentEpisode: (BaseItem) -> Unit = {},
+    recentSeasonFailed: Boolean = false,
+    onSelectRecentSeason: (BaseItem, Int) -> Unit = { _, _ -> },
 ) = key(series.id) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -385,6 +391,8 @@ fun SeriesDetailsContent(
     val columnState = rememberLazyListState()
     var recentHandled by rememberSaveable(series.id, recentEpisodeKey) { mutableStateOf(false) }
     var recentCancelled by rememberSaveable(series.id, recentEpisodeKey) { mutableStateOf(false) }
+    val episodeStates = rememberSaveableStateHolder()
+    var requestedSeason by remember { mutableStateOf<java.util.UUID?>(null) }
     val activeRecentEpisodes = recentEpisodes?.takeUnless { recentCancelled }
     var hadContentFocus by remember { mutableStateOf(false) }
     var preparingRecentFocus by remember { mutableStateOf(false) }
@@ -398,8 +406,8 @@ fun SeriesDetailsContent(
     LaunchedEffect(activeRecentEpisodes?.episodeId, recentEpisodeLoading, recentHandled) {
         if (pendingRecentFocus && activeRecentEpisodes != null && !recentEpisodeLoading) {
             preparingRecentFocus = true
-            snapshotFlow { columnState.layoutInfo.totalItemsCount }.first { it >= 3 }
-            // Reveal seasons and its episode row together; do not animate through the page.
+            snapshotFlow { columnState.layoutInfo.totalItemsCount }.first { it >= 2 }
+            // Reveal the episode browser with the season control in the same item.
             columnState.scrollToItem(1)
         }
     }
@@ -566,11 +574,10 @@ fun SeriesDetailsContent(
                         }
                     }
                 }
-                item {
+                if (activeRecentEpisodes == null) item {
                     ItemRow(
                         title = stringResource(R.string.tv_seasons) + " (${seasons.size})",
                         items = seasons,
-                        initialPosition = if (pendingRecentFocus) activeRecentEpisodes?.seasonIndex else null,
                         onClickItem = { index, item ->
                             position = SEASONS_ROW
                             onClickItem.invoke(index, item)
@@ -591,29 +598,43 @@ fun SeriesDetailsContent(
                                 imageHeight = Cards.height2x3,
                                 imageWidth = Dp.Unspecified,
                                 showImageOverlay = true,
-                                modifier = mod.then(if (activeRecentEpisodes != null) Modifier.semantics {
-                                    selected = item?.id == activeRecentEpisodes.season.id
-                                } else Modifier),
+                                modifier = mod,
                             )
                         },
                     )
                 }
                 activeRecentEpisodes?.let { selection ->
                     item(key = "recent-series-episodes") {
-                        RecentSeriesEpisodeRow(
-                            selection = selection,
-                            requestInitialFocus = pendingRecentFocus && !recentEpisodeLoading,
-                            onInitialFocus = {
-                                position = RECENT_EPISODES_ROW
-                                recentHandled = true
-                                preparingRecentFocus = false
-                            },
-                            onClick = { position = RECENT_EPISODES_ROW; onClickRecentEpisode(it) },
-                            onLongClick = { index, item -> position = RECENT_EPISODES_ROW; onLongClickItem(index, item) },
-                            modifier = Modifier.fillMaxWidth()
-                                .focusRequester(focusRequesters[RECENT_EPISODES_ROW])
-                                .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
-                        )
+                        episodeStates.SaveableStateProvider(selection.season.id.toString()) {
+                            RecentSeriesEpisodeRow(
+                                selection = selection,
+                                seasons = seasons,
+                                loading = recentEpisodeLoading,
+                                loadFailed = recentSeasonFailed,
+                                requestInitialFocus = (pendingRecentFocus && !recentEpisodeLoading) ||
+                                    requestedSeason == selection.season.id,
+                                onInitialFocus = {
+                                    position = RECENT_EPISODES_ROW
+                                    recentHandled = true
+                                    preparingRecentFocus = false
+                                    requestedSeason = null
+                                },
+                                onSelectSeason = { season, index ->
+                                    if (season.id != selection.season.id) {
+                                        requestedSeason = season.id
+                                        onSelectRecentSeason(season, index)
+                                    }
+                                },
+                                onClick = { position = RECENT_EPISODES_ROW; onClickRecentEpisode(it) },
+                                onLongClick = { index, item ->
+                                    position = RECENT_EPISODES_ROW
+                                    onLongClickItem(index, item)
+                                },
+                                episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
+                                modifier = Modifier.fillMaxWidth()
+                                    .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
+                            )
+                        }
                     }
                 }
                 if (people.isNotEmpty()) {

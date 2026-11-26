@@ -1,3 +1,4 @@
+<!-- Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser. -->
 <resources>
     <string name="app_name" translatable="false">Lunoco</string>
     <string name="app_name_long" translatable="false">Lunoco</string>
@@ -47,6 +48,13 @@
     <string name="enter_server_url">Enter Server IP or URL</string>
     <string name="enter_server_address">Enter server address</string>
     <string name="episodes">Episodes</string>
+    <string name="episode_browser_all">Browse Episodes</string>
+    <string name="episode_browser_numbered_title">E%1$d — %2$s</string>
+    <string name="episode_browser_numbered_fallback">Episode %1$d</string>
+    <string name="episode_browser_untitled">Episode</string>
+    <string name="episode_browser_context_title">S%1$d E%2$d — %3$s</string>
+    <string name="episode_browser_empty">No episodes in this season.</string>
+    <string name="episode_browser_season_error">Couldn’t load the selected season.</string>
     <string name="error_loading_collection">Error loading collection %1$s</string>
     <string name="external_track">External</string>
     <string name="favorites">Favorites</string>

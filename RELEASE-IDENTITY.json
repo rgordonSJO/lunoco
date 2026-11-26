@@ -1,14 +1,14 @@
 {
-  "release": "v0.11.0",
-  "title": "Lunoco v0.11.0 — Jellyfin for Google TV",
+  "release": "v0.11.1",
+  "title": "Lunoco v0.11.1 — Episode Browser Improvements",
   "asset": "Lunoco.apk",
-  "sha256": "732bed5227be82e2d637f88840728bd27cd6d7cbd5ad2212a74404b65255afce",
-  "bytes": 30016535,
+  "sha256": "ae49d7c89d5311e19180e2b4e0986376ea5e12280ce83bd139e55953c926caec",
+  "bytes": 30019582,
   "package": "com.ryan.lunatv.jellyfin.performance",
-  "versionName": "0.11.0",
-  "versionCode": 4,
+  "versionName": "0.11.1",
+  "versionCode": 5,
   "signerSHA256": "57a0d2a501b9a679311a88aad8d9b41a1b605119ce2cf638694dae2563cf1045",
-  "correspondingSourceSHA256": "1afdf28d9ac66613bff296f359c6bd7d56419f8c8293bb4a6cd094ed88d8c28b",
   "nativeNoticesSHA256": "ce5f444ffecc910e2bc6b70fa09096aa812c5f60bdb99032881dcbf046b3790e",
-  "rebuiltForPublication": false
+  "rebuiltForPublication": false,
+  "correspondingSourceAsset": "Lunoco-0.11.1-corresponding-source.zip"
 }

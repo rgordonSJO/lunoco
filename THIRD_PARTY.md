@@ -37,3 +37,7 @@ All 23 Phase 38C native entries were matched byte-for-byte to these declared dep
 The ASS Android native build uses static archives from libass, Expat, Fontconfig, FriBidi, FreeType, HarfBuzz and libunibreak. The pinned CMake tree specifies their revisions as Git submodules. Release review must pair the exact APK with the applicable source and notice materials and account for the static FriBidi linking terms. A Maven declaration and notice catalog do not establish a complete redistribution bundle on their own.
 
 The [v0.11.0 corresponding-source archive](https://github.com/rgordonSJO/lunoco/releases/download/v0.11.0/Lunoco-0.11.0-corresponding-source.zip) includes the application source and recipient instructions to rebuild the ASS consumer against a modified FriBidi library. The [native notices archive](https://github.com/rgordonSJO/lunoco/releases/download/v0.11.0/Lunoco-native-notices.zip) includes the applicable license texts, attributions and HDR notice inventory. Both hashes are recorded in the [release checksum list](https://github.com/rgordonSJO/lunoco/releases/download/v0.11.0/SHA256SUMS.txt).
+
+## v0.11.1 native materials
+
+The v0.11.1 APK retains all 23 v0.11.0 native-library entries byte for byte and packages the same native notices. The [v0.11.1 release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.1) provides the unchanged notices and the tested ASS/FriBidi relinking kit within the updated corresponding-source archive.

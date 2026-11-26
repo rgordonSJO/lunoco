@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
 
 import android.content.Context
@@ -411,6 +412,36 @@ class SeriesViewModel
                 }
             Timber.v("Loaded ${pager.size} episodes for season $seasonId, initialIndex=$initialIndex")
             return EpisodeList.Success(seasonId, pager, initialIndex)
+        }
+
+        private val recentSeasonCache = mutableMapOf<UUID, RecentSeriesEpisodes>()
+        private var recentSeasonJob: Job? = null
+
+        fun selectRecentSeason(season: BaseItem, index: Int) {
+            val current = _state.value
+            if (current.recentEpisodeLoading || current.recentEpisodes?.season?.id == season.id) return
+            val userId = serverRepository.currentUser?.id ?: return
+            current.recentEpisodes?.let { recentSeasonCache[it.season.id] = it }
+            recentSeasonCache[season.id]?.let { cached ->
+                _state.update { it.copy(recentEpisodes = cached, recentSeasonFailed = false) }
+                return
+            }
+            _state.update { it.copy(recentEpisodeLoading = true, recentSeasonFailed = false) }
+            recentSeasonJob?.cancel()
+            recentSeasonJob = viewModelScope.launch {
+                try {
+                    val loaded = withContext(WholphinDispatchers.IO) {
+                        loadRecentBrowserSeason(api, userId, seriesId, season, index, viewModelScope)
+                    }
+                    recentSeasonCache[season.id] = loaded
+                    _state.update { it.copy(recentEpisodes = loaded, recentEpisodeLoading = false) }
+                } catch (ex: CancellationException) {
+                    throw ex
+                } catch (ex: Exception) {
+                    Timber.w(ex, "Could not load season %s", season.id)
+                    _state.update { it.copy(recentEpisodeLoading = false, recentSeasonFailed = true) }
+                }
+            }
         }
 
         fun loadEpisodes(
@@ -908,4 +939,5 @@ data class SeriesState(
     val chosenStreams: ChosenStreams? = null,
     val recentEpisodes: RecentSeriesEpisodes? = null,
     val recentEpisodeLoading: Boolean = false,
+    val recentSeasonFailed: Boolean = false,
 )
