@@ -9,3 +9,5 @@ The main changes cover floating Home navigation and focus restoration, browsing 
 On 2026-11-25, Lunoco contributors added the Recently Added television episode browser improvements, including persistent titles, focus-driven episode context, inline season and episode selection, and tests for D-pad and Back restoration. The release carries the original Phase 40A application logic and resources with dated source notices.
 
 On 2026-11-25, Lunoco contributors redesigned the episode hub for the v0.11.2 release. Changes cover the featured episode and synopsis, play and browse controls, season and grid navigation, and focused tests for layout and restoration. The v0.11.2 source preserves the tested Phase 41 implementation.
+
+On 2026-11-26, Lunoco contributors fixed episode control focus and browser Back restoration, compacted the episode overview, and added D-pad and viewport regressions. The v0.11.3 corresponding source preserves the tested Phase 42 application and test files.

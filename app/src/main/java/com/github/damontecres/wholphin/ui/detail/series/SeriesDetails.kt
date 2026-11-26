@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
@@ -7,6 +8,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -100,6 +104,7 @@ import com.github.damontecres.wholphin.ui.detail.PlaylistDialog
 import com.github.damontecres.wholphin.ui.discover.DiscoverRow
 import com.github.damontecres.wholphin.ui.discover.DiscoverRowData
 import com.github.damontecres.wholphin.ui.letNotEmpty
+import com.github.damontecres.wholphin.ui.main.JellyLuHomeBringIntoViewSpec
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.rememberInt
 import com.github.damontecres.wholphin.ui.tryRequestFocus
@@ -218,7 +223,9 @@ fun SeriesDetails(
                 onSelectRecentSeason = viewModel::selectRecentSeason,
                 recentEpisodeKey = destination.recentEpisode?.episodeId?.toString(),
                 onClickRecentEpisode = { viewModel.navigateTo(Destination.Playback(it)) },
-                onEpisodeOverview = { overviewDialog = ItemDetailsDialogInfo(it) },
+                onEpisodeOverview = {
+                    overviewDialog = ItemDetailsDialogInfo(it).copy(overview = plainEpisodeOverview(it.data.overview))
+                },
                 played = played,
                 favorite = series.data.userData?.isFavorite ?: false,
                 canDelete = state.canDeleteSeries,
@@ -349,6 +356,7 @@ private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val DISCOVER_ROW = SIMILAR_ROW + 1
 private const val RECENT_EPISODES_ROW = DISCOVER_ROW + 1
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SeriesDetailsContent(
     preferences: UserPreferences,
@@ -397,6 +405,7 @@ fun SeriesDetailsContent(
     var requestedSeason by remember { mutableStateOf<java.util.UUID?>(null) }
     var hadContentFocus by remember { mutableStateOf(false) }
     var preparingRecentFocus by remember { mutableStateOf(false) }
+    var recentHubPositioned by remember { mutableStateOf(false) }
     val pendingRecentFocus = recentEpisodeKey != null && !recentHandled
     val jumpToRecent = pendingRecentFocus && !recentEpisodeLoading &&
         recentEpisodes?.episodeId?.toString() == recentEpisodeKey
@@ -412,6 +421,7 @@ fun SeriesDetailsContent(
             snapshotFlow { columnState.layoutInfo.totalItemsCount }.first { it >= 2 }
             // Reveal the episode browser with the season control in the same item.
             columnState.scrollToItem(1)
+            recentHubPositioned = true
         }
     }
 
@@ -434,17 +444,20 @@ fun SeriesDetailsContent(
                 }
             }.focusGroup()),
     ) {
-        val hubMinHeight = (maxHeight - 72.dp).coerceAtLeast(0.dp)
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize(),
-        ) {
+        val hubMinHeight = if (people.isEmpty() && extras.isEmpty() && similar.isEmpty() && discovered.isEmpty()) {
+            (maxHeight - 80.dp).coerceAtLeast(0.dp)
+        } else {
+            0.dp
+        }
+        val railScroll = LocalBringIntoViewSpec.current
+        val seriesScroll = remember { JellyLuHomeBringIntoViewSpec(inset = 0f) }
+        // TV's default focus pivot can scroll a fully visible card and hide the hub heading.
+        CompositionLocalProvider(LocalBringIntoViewSpec provides seriesScroll) {
             LazyColumn(
                 state = columnState,
                 contentPadding = PaddingValues(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier,
+                modifier = Modifier.fillMaxSize(),
             ) {
                 item {
                     SeriesDetailsHeader(
@@ -581,41 +594,42 @@ fun SeriesDetailsContent(
                 }
                 recentEpisodes?.let { selection ->
                     item(key = "recent-series-episodes") {
-                        SeriesEpisodeHub(
-                            seriesTitle = series.name,
-                            recentEpisodeKey = recentEpisodeKey,
-                            selection = selection,
-                            seasons = seasons,
-                            loading = recentEpisodeLoading,
-                            loadFailed = recentSeasonFailed,
-                            requestInitialFocus = jumpToRecent || requestedSeason == selection.season.id,
-                            onInitialFocus = {
-                                position = RECENT_EPISODES_ROW
-                                recentHandled = true
-                                preparingRecentFocus = false
-                                requestedSeason = null
-                            },
-                            onSelectSeason = { season, index, moveFocus ->
-                                if (season.id != selection.season.id) {
-                                    requestedSeason = season.id.takeIf { moveFocus }
-                                    onSelectRecentSeason(season, index)
-                                }
-                            },
-                            onClick = {
-                                position = RECENT_EPISODES_ROW
-                                onClickRecentEpisode(it)
-                            },
-                            onOverview = onEpisodeOverview,
-                            onLongClick = { index, item ->
-                                position = RECENT_EPISODES_ROW
-                                onLongClickItem(index, item)
-                            },
-                            episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
-                            modifier = Modifier.fillMaxWidth()
-                                .heightIn(min = hubMinHeight)
-                                .padding(top = HeaderUtils.topPadding)
-                                .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
-                        )
+                        CompositionLocalProvider(LocalBringIntoViewSpec provides railScroll) {
+                            SeriesEpisodeHub(
+                                recentEpisodeKey = recentEpisodeKey,
+                                selection = selection,
+                                seasons = seasons,
+                                loading = recentEpisodeLoading,
+                                loadFailed = recentSeasonFailed,
+                                requestInitialFocus = (jumpToRecent && recentHubPositioned) || requestedSeason == selection.season.id,
+                                onInitialFocus = {
+                                    position = RECENT_EPISODES_ROW
+                                    recentHandled = true
+                                    preparingRecentFocus = false
+                                    requestedSeason = null
+                                },
+                                onSelectSeason = { season, index, moveFocus ->
+                                    if (season.id != selection.season.id) {
+                                        requestedSeason = season.id.takeIf { moveFocus }
+                                        onSelectRecentSeason(season, index)
+                                    }
+                                },
+                                onClick = {
+                                    position = RECENT_EPISODES_ROW
+                                    onClickRecentEpisode(it)
+                                },
+                                onOverview = onEpisodeOverview,
+                                onLongClick = { index, item ->
+                                    position = RECENT_EPISODES_ROW
+                                    onLongClickItem(index, item)
+                                },
+                                episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
+                                modifier = Modifier.fillMaxWidth()
+                                    .heightIn(min = hubMinHeight)
+                                    .padding(top = 12.dp)
+                                    .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
+                            )
+                        }
                     }
                 }
                 if (people.isNotEmpty()) {

@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
 // Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
@@ -5,19 +6,29 @@ package com.github.damontecres.wholphin.ui.detail.series
 
 import android.app.Application
 import android.content.pm.ActivityInfo
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import com.github.damontecres.wholphin.ui.theme.LunocoContentTheme
 import com.github.damontecres.wholphin.ui.theme.colors.JellyLuThemeColors
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.tv.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -30,9 +41,11 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.tv.material3.MaterialTheme
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.HomeRowConfig
+import com.github.damontecres.wholphin.data.model.Person
 import com.github.damontecres.wholphin.ui.main.resolveRecentSeriesEntry
 import kotlinx.coroutines.runBlocking
 import com.github.damontecres.wholphin.ui.nav.Destination
+import com.github.damontecres.wholphin.ui.nav.LunocoTopNavigation
 import com.github.damontecres.wholphin.preferences.AppPreferences
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.services.ImageUrlService
@@ -86,7 +99,7 @@ class RecentSeriesFocusUiTest {
     private var currentSeries by mutableStateOf(series)
     private var seriesVisible by mutableStateOf(true)
     private var openDetailsOnEpisode = false
-    private fun render(target: Boolean = true, delayed: Boolean = false, library: UUID? = null, seasonCount: Int = 4) {
+    private fun render(target: Boolean = true, delayed: Boolean = false, library: UUID? = null, seasonCount: Int = 4, chrome: Boolean = false) {
         val routeTarget = if (library == null) {
             if (target) selected.episodeId.toString() else null
         } else {
@@ -108,10 +121,27 @@ class RecentSeriesFocusUiTest {
                     LunocoContentTheme {
                         Box(Modifier.fillMaxSize()) {
                             TestSeriesBackdrop()
+                            if (chrome) {
+                                val navFocus = remember { FocusRequester() }
+                                Box(Modifier.zIndex(1f).testTag("phase42-nav")) {
+                                    LunocoTopNavigation(
+                                        destination = Destination.MediaItem(currentSeries.id, BaseItemKind.SERIES),
+                                        groups = emptyList(), selectedLibraryId = null, homeFocus = navFocus,
+                                        onProfile = {}, onHome = {}, onOpenLink = {}, onSearch = {}, onSettings = {},
+                                        onNavigationFocus = {},
+                                    )
+                                }
+                            }
+                            Box(
+                                if (chrome) Modifier.fillMaxSize().padding(top = 56.dp, start = 24.dp, end = 24.dp)
+                                    .focusRestorer().focusGroup() else Modifier.fillMaxSize(),
+                            ) {
                             SeriesDetailsContent(
                         preferences = UserPreferences(AppPreferences.getDefaultInstance(), null),
                         series = currentSeries, seasons = seasons.take(seasonCount), similar = emptyList(), trailers = emptyList(),
-                        extras = emptyList(), people = emptyList(), discovered = emptyList(), played = false,
+                        extras = emptyList(),
+                        people = if (chrome) listOf(Person(UUID(8, 1), "Fixture Actor", "Role", PersonKind.ACTOR, null, false)) else emptyList(),
+                        discovered = emptyList(), played = false,
                         favorite = favorite, canDelete = false, onClickItem = { _, _ -> }, onClickPerson = {},
                         onLongClickItem = { _, _ -> }, overviewOnClick = {}, playOnClick = {},
                         watchOnClick = {}, favoriteOnClick = {}, trailerOnClick = {}, onClickExtra = { _, _ -> },
@@ -131,6 +161,7 @@ class RecentSeriesFocusUiTest {
                         onEpisodeOverview = { overviews += it.id },
                         modifier = Modifier.fillMaxSize(),
                             )
+                            }
                         }
                     }
                     }
@@ -140,6 +171,65 @@ class RecentSeriesFocusUiTest {
         }
         compose.waitForIdle()
     }
+    private fun sendRemoteKey(code: Int) {
+        compose.runOnIdle {
+            val downTime = SystemClock.uptimeMillis()
+            for (action in listOf(AndroidKeyEvent.ACTION_DOWN, AndroidKeyEvent.ACTION_UP)) {
+                compose.activity.dispatchKeyEvent(
+                    AndroidKeyEvent(downTime, SystemClock.uptimeMillis(), action, code, 0, 0, 0, 0, 0, InputDevice.SOURCE_DPAD),
+                )
+            }
+        }
+        compose.waitForIdle()
+    }
+
+    @Test fun phase42RightFromFocusedPlayVisitsBrowseAndBackRestoresTheTrigger() {
+        render(chrome = true)
+        val play = compose.onNodeWithTag("episode-browser-play")
+        val browse = compose.onNodeWithTag("episode-browser-all")
+        episode(6).assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
+        play.assertIsFocused()
+        compose.runOnIdle { favorite = true }
+        play.assertIsFocused()
+        capture("play-focused")
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        browse.assertIsFocused()
+        capture("browse-focused")
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
+        play.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        browse.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        compose.onNodeWithTag("episode-browser-picker-list").assertIsDisplayed()
+        capture("expanded-browser")
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        browse.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
+        episode(6).assertIsFocused()
+        assertTrue(clicked.isEmpty())
+    }
+
+    @Test fun phase42RecentLandingOnlyHighlightsTheActualDpadTarget() {
+        render(chrome = true)
+        episode(6).assertIsFocused()
+        val play = compose.onNodeWithTag("episode-browser-play").assertIsNotFocused()
+        val rendered = play.captureToImage().asAndroidBitmap()
+        val idleFill = Color(rendered.getPixel(rendered.width / 8, rendered.height / 2)).luminance()
+        val header = compose.onNodeWithTag("episode-browser-heading").assertIsDisplayed()
+        val headerBounds = header.getUnclippedBoundsInRoot()
+        val titleBounds = compose.onNodeWithTag("episode-browser-featured-title")
+            .assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue("Episode heading clears the floating navigation", headerBounds.top >= 56.dp)
+        assertTrue("Episode title is below the heading", titleBounds.top >= headerBounds.bottom)
+        assertTrue("Selected thumbnail fits in the same TV viewport", episode(6).getUnclippedBoundsInRoot().bottom <= 540.dp)
+        capture("recent-landing")
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        episode(7).assertIsFocused()
+        assertEquals("Changing episodes must not vertically move the heading", headerBounds.top, header.getUnclippedBoundsInRoot().top)
+        assertTrue("The idle Play fill looks focused while Right actually moves the rail (luminance $idleFill)", idleFill < 0.55f)
+    }
+
     private fun episode(index: Int) = compose.onNodeWithTag("recent-series-episode-${episodes[index].id}")
     @Test fun targetsSeasonThreeEpisodeSevenWithoutAutoplay() {
         render()
@@ -228,7 +318,7 @@ class RecentSeriesFocusUiTest {
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         assertEquals("TV capture width", 1920, image.width)
         assertEquals("TV capture height", 1080, image.height)
-        val output = File("build/reports/episode-flow-41/$name.png")
+        val output = File("build/reports/episode-focus-42/$name.png")
         output.parentFile!!.mkdirs()
         output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
     }
@@ -245,10 +335,11 @@ class RecentSeriesFocusUiTest {
         capture("different-episode")
     }
 
-    @Test fun seasonControlIsOnePressUpAndReturnsToTheSameEpisode() {
+    @Test fun seasonControlIsAbovePlayAndReturnsToTheSameEpisode() {
         render()
         val season = compose.onNodeWithTag("episode-browser-season")
         episode(6).performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("episode-browser-play").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
         season.assertIsFocused()
         capture("season-focused")
         season.performKeyInput { pressKey(Key.DirectionDown) }
@@ -257,13 +348,15 @@ class RecentSeriesFocusUiTest {
 
     private fun openPickerFromEpisode(index: Int, browse: Boolean = false) {
         episode(index).performKeyInput { pressKey(Key.DirectionUp) }
-        val season = compose.onNodeWithTag("episode-browser-season").assertIsFocused()
+        val play = compose.onNodeWithTag("episode-browser-play").assertIsFocused()
         if (browse) {
-            season.performKeyInput { pressKey(Key.DirectionLeft) }
+            play.performKeyInput { pressKey(Key.DirectionRight) }
             compose.onNodeWithTag("episode-browser-all").assertIsFocused()
                 .performKeyInput { pressKey(Key.DirectionCenter) }
         } else {
-            season.performKeyInput { pressKey(Key.DirectionCenter) }
+            play.performKeyInput { pressKey(Key.DirectionUp) }
+            compose.onNodeWithTag("episode-browser-season").assertIsFocused()
+                .performKeyInput { pressKey(Key.DirectionCenter) }
         }
     }
 
@@ -367,6 +460,7 @@ class RecentSeriesFocusUiTest {
         openPickerFromEpisode(7, browse = true)
         compose.onNodeWithTag("episode-browser-picker-list").assertIsDisplayed()
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
         episode(7).assertIsDisplayed().assertIsFocused()
         assertTrue(clicked.isEmpty())
     }
@@ -384,18 +478,16 @@ class RecentSeriesFocusUiTest {
         render()
         episode(6).performKeyInput { pressKey(Key.DirectionRight) }
         episode(7).assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
-        compose.onNodeWithTag("episode-browser-season").assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
-        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
         compose.onNodeWithTag("episode-browser-play").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
         assertEquals(listOf(episodes[7].id), clicked)
     }
 
     @Test fun recentBadgeTracksTheExactEpisodeAndTheHubClearsHeaderInset() {
-        render()
+        render(chrome = true)
         compose.onNodeWithTag("episode-browser-recent").assertIsDisplayed()
         val episodeHub = compose.onNodeWithTag("episode-hub").getUnclippedBoundsInRoot()
         val season = compose.onNodeWithTag("episode-browser-season").getUnclippedBoundsInRoot()
-        assertTrue("Season control clears the floating-header inset", season.top >= 48.dp)
+        assertTrue("Season control clears the floating-header inset", season.top >= 56.dp)
         assertTrue("Season control is on the trailing half of the header", season.left > episodeHub.left + (episodeHub.right - episodeHub.left) / 2)
         episode(6).performKeyInput { pressKey(Key.DirectionRight) }
         compose.onNodeWithTag("episode-browser-recent").assertDoesNotExist()
@@ -403,7 +495,7 @@ class RecentSeriesFocusUiTest {
         compose.onNodeWithTag("episode-browser-recent").assertIsDisplayed()
     }
 
-    @Test fun longDescriptionUsesThreeLinesWithinTheScrimAndCanOpenTheExistingOverview() {
+    @Test fun longDescriptionUsesTwoLinesWithinTheScrimAndCanOpenTheExistingOverview() {
         val longOverview = "<p>A lost explorer follows the winding river.</p><p>" +
             "There are many clues to see, and each takes them farther into the valley. ".repeat(15) + "</p>"
         selected = selected.copy(episodes = episodes.toMutableList().apply {
@@ -414,17 +506,19 @@ class RecentSeriesFocusUiTest {
         val geometry = node.getUnclippedBoundsInRoot()
         val context = compose.onNodeWithTag("episode-browser-context").getUnclippedBoundsInRoot()
         val ratio = (geometry.right - geometry.left).value / (context.right - context.left).value
-        assertTrue("Description width fraction was $ratio", ratio in 0.55f..0.65f)
+        assertTrue("Description width fraction was $ratio", ratio in 0.55f..0.60f)
         val layout = mutableListOf<TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layout) }
-        assertEquals(3, layout.single().lineCount)
-        assertTrue(layout.single().isLineEllipsized(2))
+        assertEquals(2, layout.single().lineCount)
+        assertTrue(layout.single().isLineEllipsized(1))
         assertFalse(layout.single().layoutInput.text.text.contains("<p>"))
         assertTrue(layout.single().layoutInput.text.text.contains("winding river. There are"))
         compose.onNodeWithTag("episode-browser-overview-action").assertIsDisplayed()
         capture("long-description")
         episode(6).performKeyInput { pressKey(Key.DirectionUp) }
-        compose.onNodeWithTag("episode-browser-season").assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.onNodeWithTag("episode-browser-play").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("episode-browser-overview-action").assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
         compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
         compose.onNodeWithTag("episode-browser-overview-action").assertIsFocused().performKeyInput {
             pressKey(Key.DirectionCenter)
@@ -461,6 +555,7 @@ class RecentSeriesFocusUiTest {
         compose.onNodeWithText("Season 2 ▼").assertIsDisplayed()
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithText("Season 3 ▼").assertIsDisplayed()
+        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
         episode(7).assertIsFocused()
         assertTrue(clicked.isEmpty())
     }
