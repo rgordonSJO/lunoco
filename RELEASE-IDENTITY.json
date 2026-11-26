@@ -1,14 +1,14 @@
 {
-  "release": "v0.11.1",
-  "title": "Lunoco v0.11.1 — Episode Browser Improvements",
+  "release": "v0.11.2",
+  "title": "Lunoco v0.11.2 — Episode Hub Redesign",
   "asset": "Lunoco.apk",
-  "sha256": "ae49d7c89d5311e19180e2b4e0986376ea5e12280ce83bd139e55953c926caec",
-  "bytes": 30019582,
+  "sha256": "aa5eadc026fab968b7b652ac55adf1ef417e087341b0e37abc2938dc2c8654e5",
+  "bytes": 30021106,
   "package": "com.ryan.lunatv.jellyfin.performance",
-  "versionName": "0.11.1",
-  "versionCode": 5,
+  "versionName": "0.11.2",
+  "versionCode": 6,
   "signerSHA256": "57a0d2a501b9a679311a88aad8d9b41a1b605119ce2cf638694dae2563cf1045",
   "nativeNoticesSHA256": "ce5f444ffecc910e2bc6b70fa09096aa812c5f60bdb99032881dcbf046b3790e",
   "rebuiltForPublication": false,
-  "correspondingSourceAsset": "Lunoco-0.11.1-corresponding-source.zip"
+  "correspondingSourceAsset": "Lunoco-0.11.2-corresponding-source.zip"
 }

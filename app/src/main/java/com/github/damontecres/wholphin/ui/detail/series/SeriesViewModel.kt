@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
 
@@ -219,21 +220,35 @@ class SeriesViewModel
                         seasons = seasons,
                         episodes = episodes,
                         trailers = remoteTrailers,
+                        recentEpisodeLoading = seriesPageType == SeriesPageType.DETAILS && seasons.isNotEmpty(),
                     )
                 }
 
                 if (seriesPageType == SeriesPageType.DETAILS) {
-                    if (seasonEpisodeIds != null) {
-                        _state.update { it.copy(recentEpisodeLoading = true) }
+                    if (seasons.isNotEmpty()) {
                         viewModelScope.launchIO {
                             val selected = try {
                                 serverRepository.currentUser?.id?.let { userId ->
-                                    loadRecentSeriesEpisodes(api, userId, seriesId, seasons, seasonEpisodeIds, viewModelScope)
+                                    if (seasonEpisodeIds != null) {
+                                        loadRecentSeriesEpisodes(api, userId, seriesId, seasons, seasonEpisodeIds, viewModelScope)
+                                    } else {
+                                        // Use the same paged browser for a normal Series Details entry.
+                                        // Prefer the first regular season when Specials precede it.
+                                        val first = seasons[0]
+                                        val firstRegular = if (first?.indexNumber == 0) seasons.getOrNull(1) else null
+                                        val season = firstRegular ?: first
+                                        season?.let {
+                                            loadRecentBrowserSeason(
+                                                api, userId, seriesId, it, if (firstRegular == null) 0 else 1, viewModelScope,
+                                            )
+                                        }
+                                    }
                                 }
                             } catch (ex: CancellationException) {
                                 throw ex
-                            } catch (_: Exception) {
-                                null // Optional focus must not make the complete series page fail.
+                            } catch (ex: Exception) {
+                                Timber.w(ex, "Could not load the series episode browser for %s", seriesId)
+                                null
                             }
                             _state.update { it.copy(recentEpisodes = selected, recentEpisodeLoading = false) }
                         }

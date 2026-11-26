@@ -41,3 +41,7 @@ The [v0.11.0 corresponding-source archive](https://github.com/rgordonSJO/lunoco/
 ## v0.11.1 native materials
 
 The v0.11.1 APK retains all 23 v0.11.0 native-library entries byte for byte and packages the same native notices. The [v0.11.1 release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.1) provides the unchanged notices and the tested ASS/FriBidi relinking kit within the updated corresponding-source archive.
+
+## v0.11.2 native materials
+
+The v0.11.2 APK retains all 23 v0.11.1 native library entries and the same packaged notices byte for byte. The [v0.11.2 release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.2) provides the unchanged notices and tested ASS/FriBidi relinking kit alongside the new corresponding application source.

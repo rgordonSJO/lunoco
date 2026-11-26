@@ -1,3 +1,4 @@
+<!-- Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign. -->
 <!-- Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser. -->
 <resources>
     <string name="app_name" translatable="false">Lunoco</string>
@@ -49,6 +50,13 @@
     <string name="enter_server_address">Enter server address</string>
     <string name="episodes">Episodes</string>
     <string name="episode_browser_all">Browse Episodes</string>
+    <string name="episode_browser_play">Play Episode</string>
+    <string name="episode_browser_full_overview">Full Overview</string>
+    <string name="episode_browser_season_dropdown">%1$s ▼</string>
+    <plurals name="episode_browser_episode_count">
+        <item quantity="one">%d episode</item>
+        <item quantity="other">%d episodes</item>
+    </plurals>
     <string name="episode_browser_numbered_title">E%1$d — %2$s</string>
     <string name="episode_browser_numbered_fallback">Episode %1$d</string>
     <string name="episode_browser_untitled">Episode</string>

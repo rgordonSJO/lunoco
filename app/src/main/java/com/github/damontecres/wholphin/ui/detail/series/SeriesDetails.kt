@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
 
@@ -8,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
@@ -58,6 +59,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.ExtrasItem
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -216,6 +218,7 @@ fun SeriesDetails(
                 onSelectRecentSeason = viewModel::selectRecentSeason,
                 recentEpisodeKey = destination.recentEpisode?.episodeId?.toString(),
                 onClickRecentEpisode = { viewModel.navigateTo(Destination.Playback(it)) },
+                onEpisodeOverview = { overviewDialog = ItemDetailsDialogInfo(it) },
                 played = played,
                 favorite = series.data.userData?.isFavorite ?: false,
                 canDelete = state.canDeleteSeries,
@@ -378,6 +381,7 @@ fun SeriesDetailsContent(
     recentEpisodeLoading: Boolean = false,
     recentEpisodeKey: String? = null,
     onClickRecentEpisode: (BaseItem) -> Unit = {},
+    onEpisodeOverview: (BaseItem) -> Unit = {},
     recentSeasonFailed: Boolean = false,
     onSelectRecentSeason: (BaseItem, Int) -> Unit = { _, _ -> },
 ) = key(series.id) {
@@ -390,21 +394,20 @@ fun SeriesDetailsContent(
     val playFocusRequester = remember { FocusRequester() }
     val columnState = rememberLazyListState()
     var recentHandled by rememberSaveable(series.id, recentEpisodeKey) { mutableStateOf(false) }
-    var recentCancelled by rememberSaveable(series.id, recentEpisodeKey) { mutableStateOf(false) }
-    val episodeStates = rememberSaveableStateHolder()
     var requestedSeason by remember { mutableStateOf<java.util.UUID?>(null) }
-    val activeRecentEpisodes = recentEpisodes?.takeUnless { recentCancelled }
     var hadContentFocus by remember { mutableStateOf(false) }
     var preparingRecentFocus by remember { mutableStateOf(false) }
     val pendingRecentFocus = recentEpisodeKey != null && !recentHandled
-    val restoreOnEntry by rememberUpdatedState(!(pendingRecentFocus && activeRecentEpisodes != null && !recentEpisodeLoading))
+    val jumpToRecent = pendingRecentFocus && !recentEpisodeLoading &&
+        recentEpisodes?.episodeId?.toString() == recentEpisodeKey
+    val restoreOnEntry by rememberUpdatedState(!jumpToRecent)
     LaunchedEffect(Unit) {
         snapshotFlow { columnState.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
         withFrameNanos { }
         if (restoreOnEntry) focusRequesters.getOrNull(position)?.tryRequestFocus()
     }
-    LaunchedEffect(activeRecentEpisodes?.episodeId, recentEpisodeLoading, recentHandled) {
-        if (pendingRecentFocus && activeRecentEpisodes != null && !recentEpisodeLoading) {
+    LaunchedEffect(jumpToRecent) {
+        if (jumpToRecent) {
             preparingRecentFocus = true
             snapshotFlow { columnState.layoutInfo.totalItemsCount }.first { it >= 2 }
             // Reveal the episode browser with the season control in the same item.
@@ -412,13 +415,15 @@ fun SeriesDetailsContent(
         }
     }
 
-    Box(
-        modifier = modifier.then(if (recentEpisodeKey != null) Modifier
+    BoxWithConstraints(
+        modifier = modifier.then(Modifier
             .onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown && pendingRecentFocus) {
                     recentHandled = true
-                    recentCancelled = true
                     preparingRecentFocus = false
+                }
+                if (it.type == KeyEventType.KeyDown && recentEpisodeLoading && requestedSeason != null) {
+                    requestedSeason = null
                 }
                 false // Observe user intent, never intercept ordinary directional navigation.
             }
@@ -426,10 +431,10 @@ fun SeriesDetailsContent(
                 if (it.hasFocus) hadContentFocus = true
                 else if (hadContentFocus && !preparingRecentFocus && pendingRecentFocus) {
                     recentHandled = true
-                    recentCancelled = true
                 }
-            }.focusGroup() else Modifier),
+            }.focusGroup()),
     ) {
+        val hubMinHeight = (maxHeight - 72.dp).coerceAtLeast(0.dp)
         Column(
             modifier =
                 Modifier
@@ -574,67 +579,43 @@ fun SeriesDetailsContent(
                         }
                     }
                 }
-                if (activeRecentEpisodes == null) item {
-                    ItemRow(
-                        title = stringResource(R.string.tv_seasons) + " (${seasons.size})",
-                        items = seasons,
-                        onClickItem = { index, item ->
-                            position = SEASONS_ROW
-                            onClickItem.invoke(index, item)
-                        },
-                        onLongClickItem = { index, item ->
-                            position = SEASONS_ROW
-                            onLongClickItem.invoke(index, item)
-                        },
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequesters[SEASONS_ROW]),
-                        cardContent = @Composable { index, item, mod, onClick, onLongClick ->
-                            SeasonCard(
-                                item = item,
-                                onClick = onClick,
-                                onLongClick = onLongClick,
-                                imageHeight = Cards.height2x3,
-                                imageWidth = Dp.Unspecified,
-                                showImageOverlay = true,
-                                modifier = mod,
-                            )
-                        },
-                    )
-                }
-                activeRecentEpisodes?.let { selection ->
+                recentEpisodes?.let { selection ->
                     item(key = "recent-series-episodes") {
-                        episodeStates.SaveableStateProvider(selection.season.id.toString()) {
-                            RecentSeriesEpisodeRow(
-                                selection = selection,
-                                seasons = seasons,
-                                loading = recentEpisodeLoading,
-                                loadFailed = recentSeasonFailed,
-                                requestInitialFocus = (pendingRecentFocus && !recentEpisodeLoading) ||
-                                    requestedSeason == selection.season.id,
-                                onInitialFocus = {
-                                    position = RECENT_EPISODES_ROW
-                                    recentHandled = true
-                                    preparingRecentFocus = false
-                                    requestedSeason = null
-                                },
-                                onSelectSeason = { season, index ->
-                                    if (season.id != selection.season.id) {
-                                        requestedSeason = season.id
-                                        onSelectRecentSeason(season, index)
-                                    }
-                                },
-                                onClick = { position = RECENT_EPISODES_ROW; onClickRecentEpisode(it) },
-                                onLongClick = { index, item ->
-                                    position = RECENT_EPISODES_ROW
-                                    onLongClickItem(index, item)
-                                },
-                                episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
-                                modifier = Modifier.fillMaxWidth()
-                                    .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
-                            )
-                        }
+                        SeriesEpisodeHub(
+                            seriesTitle = series.name,
+                            recentEpisodeKey = recentEpisodeKey,
+                            selection = selection,
+                            seasons = seasons,
+                            loading = recentEpisodeLoading,
+                            loadFailed = recentSeasonFailed,
+                            requestInitialFocus = jumpToRecent || requestedSeason == selection.season.id,
+                            onInitialFocus = {
+                                position = RECENT_EPISODES_ROW
+                                recentHandled = true
+                                preparingRecentFocus = false
+                                requestedSeason = null
+                            },
+                            onSelectSeason = { season, index, moveFocus ->
+                                if (season.id != selection.season.id) {
+                                    requestedSeason = season.id.takeIf { moveFocus }
+                                    onSelectRecentSeason(season, index)
+                                }
+                            },
+                            onClick = {
+                                position = RECENT_EPISODES_ROW
+                                onClickRecentEpisode(it)
+                            },
+                            onOverview = onEpisodeOverview,
+                            onLongClick = { index, item ->
+                                position = RECENT_EPISODES_ROW
+                                onLongClickItem(index, item)
+                            },
+                            episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
+                            modifier = Modifier.fillMaxWidth()
+                                .heightIn(min = hubMinHeight)
+                                .padding(top = HeaderUtils.topPadding)
+                                .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
+                        )
                     }
                 }
                 if (people.isNotEmpty()) {
@@ -665,6 +646,36 @@ fun SeriesDetailsContent(
                                     .focusRequester(focusRequesters[PEOPLE_ROW]),
                         )
                     }
+                }
+                // Keep the standalone season details route as a secondary section for ordinary series.
+                if (!recentEpisodeLoading && (recentEpisodes == null || recentEpisodeKey == null)) item {
+                    ItemRow(
+                        title = stringResource(R.string.tv_seasons) + " (${seasons.size})",
+                        items = seasons,
+                        onClickItem = { index, item ->
+                            position = SEASONS_ROW
+                            onClickItem.invoke(index, item)
+                        },
+                        onLongClickItem = { index, item ->
+                            position = SEASONS_ROW
+                            onLongClickItem.invoke(index, item)
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequesters[SEASONS_ROW]),
+                        cardContent = @Composable { index, item, mod, onClick, onLongClick ->
+                            SeasonCard(
+                                item = item,
+                                onClick = onClick,
+                                onLongClick = onLongClick,
+                                imageHeight = Cards.height2x3,
+                                imageWidth = Dp.Unspecified,
+                                showImageOverlay = true,
+                                modifier = mod,
+                            )
+                        },
+                    )
                 }
                 if (extras.isNotEmpty()) {
                     item {
