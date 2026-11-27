@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 for the compact Episodes heading and shared inset.
 // Modified by Lunoco contributors on 2026-11-26 to simplify series episode browsing.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
@@ -87,6 +88,9 @@ private fun plainEpisodeOverview(overview: String?): String? =
         HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim().takeIf(String::isNotEmpty)
     }
 
+private val EpisodeSectionInset = 32.dp
+private val EpisodeRailGutter = 14.dp
+
 private val overviewWhitespace = Regex("[\\s\\u00A0]+")
 
 @Composable
@@ -148,20 +152,22 @@ internal fun SeriesEpisodeRow(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = EpisodeSectionInset),
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     stringResource(R.string.episodes),
                     style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.testTag("episode-browser-heading"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).testTag("episode-browser-heading"),
                 )
                 if (!showSeasons) {
                     Button(
                         onClick = { if (!loading) showSeasons = true },
                         scale = ButtonDefaults.scale(focusedScale = 1f),
-                        modifier = Modifier.widthIn(max = 250.dp)
+                        modifier = Modifier.widthIn(max = 220.dp)
                             .focusRequester(seasonFocus)
                             .then(if (episodes.isEmpty()) Modifier.focusRequester(episodeFocusRequester) else Modifier)
                             .focusProperties {
@@ -191,7 +197,7 @@ internal fun SeriesEpisodeRow(
                             onSelectSeason(season, seasonIndex)
                         }
                     },
-                    modifier = Modifier.align(Alignment.End).padding(horizontal = 32.dp),
+                    modifier = Modifier.padding(horizontal = EpisodeSectionInset),
                 )
             } else {
                 val episode = episodes.getOrNull(index)
@@ -199,7 +205,7 @@ internal fun SeriesEpisodeRow(
                 val overview = remember(overviewText) {
                     plainEpisodeOverview(overviewText)?.replace(overviewWhitespace, " ")
                 }
-                Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = EpisodeSectionInset)) {
                     Text(
                         text = when {
                             loading -> stringResource(R.string.loading)
@@ -227,9 +233,9 @@ internal fun SeriesEpisodeRow(
                     val imageHeight = 88.dp
                     LazyRow(
                         state = rowState,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = EpisodeRailGutter, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = EpisodeSectionInset - EpisodeRailGutter)
                             .focusRestorer(selectedEpisodeFocus)
                             .testTag("episode-browser-rail"),
                     ) {

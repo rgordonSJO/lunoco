@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to check selector alignment and exact episode landing.
 // Modified by Lunoco contributors on 2026-11-26 to cover simplified series details with remote keys.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
@@ -211,7 +212,13 @@ class RecentSeriesFocusUiTest {
         val season = compose.onNodeWithTag("episode-browser-season").assertIsDisplayed().getUnclippedBoundsInRoot()
         assertTrue("Episode heading clears the floating navigation", headerBounds.top >= 56.dp)
         assertTrue("Episode title is below the heading", titleBounds.top >= headerBounds.bottom)
-        assertTrue("Season selector remains next to heading", season.left > headerBounds.right)
+        val selectorGap = (season.left - headerBounds.right).value
+        assertTrue("Season selector is 16–24dp after the heading (was $selectorGap)", selectorGap in 16f..24f)
+        assertEquals("Season selector and Episodes heading are vertically centered",
+            ((headerBounds.top + headerBounds.bottom) / 2).value, ((season.top + season.bottom) / 2).value, 1f)
+        val description = compose.onNodeWithTag("series-episode-description").getUnclippedBoundsInRoot()
+        assertEquals(headerBounds.left, titleBounds.left)
+        assertEquals(headerBounds.left, description.left)
         assertTrue("Selected thumbnail fits in the same TV viewport", episode(6).getUnclippedBoundsInRoot().bottom <= 540.dp)
         capture("recent-landing")
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
@@ -229,6 +236,24 @@ class RecentSeriesFocusUiTest {
         episode(6).performKeyInput { pressKey(Key.DirectionCenter) }
         assertEquals(listOf(episodes[6].id), clicked)
     }
+    @Test fun recentlyAddedEpisodeTwoKeepsItsExactIdAndTheWholeCardIsVisible() {
+        selected = selected.copy(episodeIndex = 1, episodeId = episodes[1].id)
+        render(library = UUID(10, 1), chrome = true)
+        episode(1).assertIsDisplayed().assertIsFocused()
+        compose.onNodeWithTag("series-episode-title").assertTextEquals("S3 E2 — Episode 2")
+        compose.onNodeWithTag("series-episode-description").assertTextEquals("Overview for episode 2")
+        val heading = compose.onNodeWithTag("episode-browser-heading").getUnclippedBoundsInRoot()
+        val season = compose.onNodeWithTag("episode-browser-season").assertIsDisplayed().getUnclippedBoundsInRoot()
+        val card = episode(1).getUnclippedBoundsInRoot()
+        val label = compose.onNodeWithTag("episode-browser-card-title-${episodes[1].id}").getUnclippedBoundsInRoot()
+        assertTrue("The heading and selector clear navigation", heading.top >= 56.dp && season.top >= 56.dp)
+        assertTrue("The focused artwork and both title lines fit below the navigation", card.top > season.bottom &&
+            card.bottom < label.top && label.bottom <= 540.dp)
+        assertTrue("Entering the page does not play an episode", clicked.isEmpty())
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(episodes[1].id), clicked)
+    }
+
     @Test fun pagingAndRecompositionDoNotResetEpisodeFocus() {
         render()
         episode(6).performKeyInput { pressKey(Key.DirectionRight) }
@@ -308,7 +333,7 @@ class RecentSeriesFocusUiTest {
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         assertEquals("TV capture width", 1920, image.width)
         assertEquals("TV capture height", 1080, image.height)
-        val output = File("build/reports/simple-series-43/$name.png")
+        val output = File("build/reports/simple-series-44/$name.png")
         output.parentFile!!.mkdirs()
         output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
     }

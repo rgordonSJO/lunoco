@@ -7,7 +7,7 @@ The episode hub shows the selected episode’s title and synopsis. Choose **Play
 
 ## Install on Google TV
 
-In Downloader by AFTVnews, enter code **7639133**. You can also [download Lunoco.apk](https://github.com/rgordonSJO/lunoco/releases/latest/download/Lunoco.apk) from the [official release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.4). If Google TV prompts you, allow Downloader to install the APK.
+In Downloader by AFTVnews, enter code **7639133**. You can also [download Lunoco.apk](https://github.com/rgordonSJO/lunoco/releases/latest/download/Lunoco.apk) from the [official release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.5). If Google TV prompts you, allow Downloader to install the APK.
 
 Install over a compatible existing copy of Lunoco to retain your settings and Jellyfin connection. An update requires the same package and signing identity and a compatible version code. Keep the existing installation if Google TV reports a conflict.
 
@@ -23,5 +23,5 @@ Lunoco is a modified version of [Wholphin](https://github.com/damontecres/Wholph
 - [Release process](RELEASING.md)
 - [Third-party notices and source references](THIRD_PARTY.md)
 - [Changes from the public base](MODIFICATIONS.md)
-- [Corresponding source and native notices](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.4)
+- [Corresponding source and native notices](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.5)
 - [Latest released APK identity](RELEASE-IDENTITY.json)

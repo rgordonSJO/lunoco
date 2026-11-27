@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to bring the full Episodes section into view on entry.
 // Modified by Lunoco contributors on 2026-11-26 to restore a simple series details page.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
@@ -391,6 +392,7 @@ fun SeriesDetailsContent(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val episodesBringIntoView = remember { BringIntoViewRequester() }
 
     var position by rememberInt()
     val focusRequesters = remember { List(RECENT_EPISODES_ROW + 1) { FocusRequester() } }
@@ -414,8 +416,10 @@ fun SeriesDetailsContent(
         if (jumpToRecent) {
             preparingRecentFocus = true
             snapshotFlow { columnState.layoutInfo.totalItemsCount }.first { it >= 2 }
-            // Reveal the episodes and season control together.
+            // Reveal the entire section before giving a thumbnail focus.
             columnState.scrollToItem(1)
+            withFrameNanos { }
+            episodesBringIntoView.bringIntoView()
             recentEpisodesPositioned = true
         }
     }
@@ -611,7 +615,8 @@ fun SeriesDetailsContent(
                                 },
                                 episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
                                 modifier = Modifier.fillMaxWidth()
-                                    .padding(top = 12.dp)
+                                    .padding(top = 8.dp)
+                                    .bringIntoViewRequester(episodesBringIntoView)
                                     .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
                             )
                         }
