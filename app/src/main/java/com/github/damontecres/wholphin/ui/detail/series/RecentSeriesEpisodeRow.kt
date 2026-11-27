@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to simplify series episode browsing.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
@@ -8,64 +9,57 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.text.HtmlCompat
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.ui.AspectRatios
 import com.github.damontecres.wholphin.ui.cards.BannerCard
-import com.github.damontecres.wholphin.ui.components.QuickDetails
 import com.github.damontecres.wholphin.ui.formatSeasonNumber
 import com.github.damontecres.wholphin.ui.main.JellyLuHomeBringIntoViewSpec
 import com.github.damontecres.wholphin.ui.rememberInt
 import com.github.damontecres.wholphin.ui.tryRequestFocus
-import com.github.damontecres.wholphin.ui.theme.LunocoContentStyle
 import kotlinx.coroutines.flow.first
-import kotlin.time.Duration
-
-private enum class EpisodePicker { SEASON, EPISODE, BROWSE_SEASON }
-private enum class EpisodeControl { SEASON, BROWSE }
-
-private val HubInset = 32.dp
-private const val EpisodeColumns = 3
 
 @Composable
 private fun seasonLabel(season: BaseItem): String =
@@ -88,377 +82,196 @@ private fun episodeLabel(episode: BaseItem?, seasonNumber: Int? = null): String 
     }
 }
 
-internal fun plainEpisodeOverview(overview: String?): String? =
+private fun plainEpisodeOverview(overview: String?): String? =
     overview?.takeIf(String::isNotBlank)?.let {
         HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim().takeIf(String::isNotEmpty)
     }
 
 private val overviewWhitespace = Regex("[\\s\\u00A0]+")
 
-/** Displays the same paged episodes in the quick row and expanded browser. */
 @Composable
-internal fun SeriesEpisodeHub(
-    recentEpisodeKey: String?,
+internal fun SeriesEpisodeRow(
     selection: RecentSeriesEpisodes,
     seasons: List<BaseItem?>,
     loading: Boolean,
     loadFailed: Boolean,
     requestInitialFocus: Boolean,
     onInitialFocus: () -> Unit,
-    onSelectSeason: (BaseItem, Int, Boolean) -> Unit,
+    onSelectSeason: (BaseItem, Int) -> Unit,
     onClick: (BaseItem) -> Unit,
-    onOverview: (BaseItem) -> Unit,
     onLongClick: (Int, BaseItem) -> Unit,
     episodeFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     val seasonStates = rememberSaveableStateHolder()
-    var picker by remember { mutableStateOf<EpisodePicker?>(null) }
-    var browseOrigin by remember { mutableStateOf<Pair<BaseItem, Int>?>(null) }
-    var restoreBrowseOrigin by remember { mutableStateOf(false) }
-    var revealEpisode by remember { mutableStateOf(false) }
-    var restoreControl by remember { mutableStateOf<EpisodeControl?>(null) }
+    val seasonFocus = remember { FocusRequester() }
+    var showSeasons by remember { mutableStateOf(false) }
+    var restoreSeasonFocus by remember { mutableStateOf(false) }
+    var returnToEpisode by remember { mutableStateOf(false) }
+    val currentOnInitialFocus by rememberUpdatedState(onInitialFocus)
 
-    LaunchedEffect(restoreBrowseOrigin, loading, selection.season.id) {
-        if (!restoreBrowseOrigin || loading) return@LaunchedEffect
-        val origin = browseOrigin
-        browseOrigin = null
-        if (origin != null && origin.first.id != selection.season.id) {
-            onSelectSeason(origin.first, origin.second, false)
-        } else {
-            restoreBrowseOrigin = false
-            restoreControl = EpisodeControl.BROWSE
-        }
-    }
-
-    val activePicker = picker
-    BackHandler(enabled = activePicker != null) {
-        when (activePicker) {
-            EpisodePicker.BROWSE_SEASON -> picker = EpisodePicker.EPISODE
-            EpisodePicker.EPISODE -> {
-                picker = null
-                restoreBrowseOrigin = true
-            }
-            EpisodePicker.SEASON -> {
-                picker = null
-                restoreControl = EpisodeControl.SEASON
-            }
-            null -> Unit
-        }
+    BackHandler(enabled = showSeasons) {
+        showSeasons = false
+        restoreSeasonFocus = true
     }
 
     seasonStates.SaveableStateProvider(selection.season.id.toString()) {
+        val episodes = selection.episodes
         val rowState = rememberLazyListState(initialFirstVisibleItemIndex = selection.episodeIndex)
         var selectedIndex by rememberInt(selection.episodeIndex)
-        var browseIndex by rememberInt(selection.episodeIndex)
-        val index = selectedIndex.coerceIn(0, selection.episodes.lastIndex.coerceAtLeast(0))
-        val targetFocus = remember { FocusRequester() }
-        val seasonFocus = remember { FocusRequester() }
-        val playFocus = remember { FocusRequester() }
-        val browseFocus = remember { FocusRequester() }
-        val overviewFocus = remember { FocusRequester() }
-        val episodeReturn = if (selection.episodes.isEmpty()) FocusRequester.Default else targetFocus
-        val currentOnInitialFocus by rememberUpdatedState(onInitialFocus)
+        val index = selectedIndex.coerceIn(0, episodes.lastIndex.coerceAtLeast(0))
+        val selectedEpisodeFocus = remember { FocusRequester() }
 
-        LaunchedEffect(activePicker, restoreControl, requestInitialFocus, revealEpisode) {
-            if (activePicker != null) return@LaunchedEffect
-            val control = restoreControl
-            if (control != null) {
+        LaunchedEffect(showSeasons, loading, restoreSeasonFocus, returnToEpisode, requestInitialFocus) {
+            if (showSeasons) return@LaunchedEffect
+            if (restoreSeasonFocus) {
                 withFrameNanos { }
-                val requester = if (control == EpisodeControl.BROWSE && selection.episodes.isNotEmpty()) browseFocus else seasonFocus
-                requester.tryRequestFocus()
-                restoreControl = null
+                seasonFocus.tryRequestFocus()
+                restoreSeasonFocus = false
             }
-            if (!requestInitialFocus && !revealEpisode) return@LaunchedEffect
-            if (selection.episodes.isEmpty()) {
+            if (loading || (!requestInitialFocus && !returnToEpisode)) return@LaunchedEffect
+            if (episodes.isEmpty()) {
                 withFrameNanos { }
                 if (!seasonFocus.tryRequestFocus()) return@LaunchedEffect
             } else {
                 if (rowState.layoutInfo.visibleItemsInfo.none { it.index == index }) rowState.scrollToItem(index)
                 snapshotFlow { rowState.layoutInfo.visibleItemsInfo.any { it.index == index } }.first { it }
                 withFrameNanos { }
-                if (!targetFocus.tryRequestFocus()) return@LaunchedEffect
+                if (!selectedEpisodeFocus.tryRequestFocus()) return@LaunchedEffect
             }
-            revealEpisode = false
+            returnToEpisode = false
             if (requestInitialFocus) currentOnInitialFocus()
         }
 
         Column(
-            modifier = modifier.focusGroup().testTag("episode-hub"),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = modifier.focusGroup(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            val seasonName = seasonLabel(selection.season)
-            val seasonControlLabel = stringResource(R.string.episode_browser_season_dropdown, seasonName)
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = HubInset),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    stringResource(if (activePicker == EpisodePicker.EPISODE) R.string.episode_browser_all else R.string.episodes),
+                    stringResource(R.string.episodes),
                     style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.weight(1f).padding(end = 12.dp).testTag("episode-browser-heading"),
+                    modifier = Modifier.testTag("episode-browser-heading"),
                 )
-                if (activePicker == null) {
+                if (!showSeasons) {
                     Button(
-                        onClick = { if (!loading) picker = EpisodePicker.SEASON },
+                        onClick = { if (!loading) showSeasons = true },
                         scale = ButtonDefaults.scale(focusedScale = 1f),
-                        modifier = Modifier.widthIn(max = 250.dp).focusRequester(seasonFocus)
-                            .then(if (selection.episodes.isEmpty()) Modifier.focusRequester(episodeFocusRequester) else Modifier)
+                        modifier = Modifier.widthIn(max = 250.dp)
+                            .focusRequester(seasonFocus)
+                            .then(if (episodes.isEmpty()) Modifier.focusRequester(episodeFocusRequester) else Modifier)
                             .focusProperties {
-                                down = if (selection.episodes.isEmpty()) FocusRequester.Default else targetFocus
-                                if (selection.episodes.isNotEmpty()) left = browseFocus
-                                right = FocusRequester.Cancel
+                                if (episodes.isNotEmpty()) down = selectedEpisodeFocus
                             }
-                            .testTag("episode-browser-season").semantics { selected = true },
-                    ) { Text(seasonControlLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            .testTag("episode-browser-season"),
+                    ) {
+                        Text(
+                            stringResource(R.string.episode_browser_season_dropdown, seasonLabel(selection.season)),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
 
-            val focused = selection.episodes.getOrNull(index)
-            val rawOverview = focused?.data?.overview
-            val overview = remember(rawOverview) { plainEpisodeOverview(rawOverview)?.replace(overviewWhitespace, " ") }
-            var overviewOverflows by remember(overview) { mutableStateOf(false) }
-            val hasOverview = overviewOverflows && focused != null
-            val feature: @Composable (Modifier, Float) -> Unit = { featureModifier, textFraction ->
-                FeaturedEpisode(
-                    episode = focused,
-                    seasonNumber = focused?.data?.parentIndexNumber ?: selection.season.indexNumber,
-                    overview = overview,
-                    runtime = focused?.timeRemainingOrRuntime,
-                    onOverviewOverflow = { if (activePicker == null) overviewOverflows = it },
-                    isRecent = recentEpisodeKey != null && recentEpisodeKey == focused?.id?.toString(),
-                    status = when {
-                        loading -> stringResource(R.string.loading)
-                        loadFailed -> stringResource(R.string.episode_browser_season_error)
-                        selection.episodes.isEmpty() -> stringResource(R.string.episode_browser_empty)
-                        else -> null
-                    },
-                    textFraction = textFraction,
-                    modifier = featureModifier,
-                )
-            }
-            when (activePicker) {
-                null -> {
-                    feature(Modifier.fillMaxWidth().padding(horizontal = HubInset), .58f)
-                    if (selection.episodes.isNotEmpty()) {
-                        val actionColors = ButtonDefaults.colors(
-                            containerColor = Color(0xF0232428),
-                            contentColor = LunocoContentStyle.Ivory,
-                            focusedContainerColor = LunocoContentStyle.Ivory,
-                            focusedContentColor = Color(0xFF17181B),
-                        )
-                        val actionBorder = ButtonDefaults.border(focusedBorder = LunocoContentStyle.FocusBorder)
-                        Row(
-                            modifier = Modifier.padding(horizontal = HubInset).testTag("episode-browser-actions"),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Button(
-                                onClick = { focused?.let(onClick) },
-                                colors = actionColors,
-                                scale = ButtonDefaults.scale(focusedScale = 1f),
-                                border = actionBorder,
-                                modifier = Modifier.height(38.dp).focusRequester(playFocus).focusProperties {
-                                    canFocus = focused != null
-                                    up = seasonFocus
-                                    down = episodeReturn
-                                    left = FocusRequester.Cancel
-                                    right = browseFocus
-                                }.testTag("episode-browser-play"),
-                            ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(stringResource(R.string.episode_browser_play))
-                            }
-                            Button(
-                                onClick = {
-                                    if (!loading) {
-                                        browseIndex = index
-                                        browseOrigin = selection.season to selection.seasonIndex
-                                        picker = EpisodePicker.EPISODE
-                                    }
-                                },
-                                scale = ButtonDefaults.scale(focusedScale = 1f),
-                                colors = actionColors,
-                                border = actionBorder,
-                                modifier = Modifier.height(38.dp).focusRequester(browseFocus).focusProperties {
-                                    up = seasonFocus
-                                    down = episodeReturn
-                                    left = if (focused == null) FocusRequester.Cancel else playFocus
-                                    right = if (hasOverview) overviewFocus else FocusRequester.Cancel
-                                }.testTag("episode-browser-all"),
-                            ) { Text(stringResource(R.string.episode_browser_all)) }
-                            if (hasOverview) {
-                                Button(
-                                    onClick = { onOverview(focused) },
-                                    scale = ButtonDefaults.scale(focusedScale = 1f),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = Color.Transparent,
-                                        contentColor = LunocoContentStyle.SecondaryText,
-                                        focusedContainerColor = LunocoContentStyle.Focused,
-                                        focusedContentColor = LunocoContentStyle.Ivory,
-                                    ),
-                                    border = actionBorder,
-                                    modifier = Modifier.height(38.dp).focusRequester(overviewFocus).focusProperties {
-                                        up = seasonFocus
-                                        down = episodeReturn
-                                        left = browseFocus
-                                        right = FocusRequester.Cancel
-                                    }.testTag("episode-browser-overview-action"),
-                                ) {
-                                    Text(stringResource(R.string.episode_browser_full_overview), style = MaterialTheme.typography.labelLarge)
-                                }
-                            }
+            if (showSeasons) {
+                SeasonPicker(
+                    seasons = seasons,
+                    selectedIndex = selection.seasonIndex,
+                    onSelect = { season, seasonIndex ->
+                        showSeasons = false
+                        if (season.id == selection.season.id) {
+                            returnToEpisode = true
+                        } else {
+                            restoreSeasonFocus = true
+                            onSelectSeason(season, seasonIndex)
                         }
-
-                        val imageHeight = 88.dp
-                        LazyRow(
-                            state = rowState,
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = HubInset - 14.dp)
-                                .focusRestorer(targetFocus).focusGroup()
-                                .testTag("episode-browser-rail"),
-                        ) {
-                            items(selection.episodes.size) { itemIndex ->
-                                val episode = selection.episodes[itemIndex]
-                                val label = episodeLabel(episode)
-                                Column(Modifier.width(imageHeight * AspectRatios.WIDE)) {
-                                    BannerCard(
-                                        item = episode, name = null, cornerText = episode?.ui?.episodeCornerText,
-                                        played = episode?.played ?: false,
-                                        playPercent = episode?.data?.userData?.playedPercentage ?: 0.0,
-                                        aspectRatio = AspectRatios.WIDE, cardHeight = imageHeight,
-                                        useSeriesForPrimary = false,
-                                        onClick = { episode?.let(onClick) },
-                                        onLongClick = { episode?.let { onLongClick(itemIndex, it) } },
-                                        modifier = Modifier
-                                            .then(if (itemIndex == index) {
-                                                Modifier.focusRequester(targetFocus).focusRequester(episodeFocusRequester)
-                                            } else Modifier)
-                                            .focusProperties {
-                                                up = if (episode == null) browseFocus else playFocus
-                                                if (itemIndex == 0) left = FocusRequester.Cancel
-                                                if (itemIndex == selection.episodes.lastIndex) right = FocusRequester.Cancel
-                                            }
-                                            .onFocusChanged { if (it.isFocused) selectedIndex = itemIndex }
-                                            .testTag("recent-series-episode-${episode?.id}")
-                                            .semantics { contentDescription = label },
-                                    )
-                                    Text(
-                                        label, style = MaterialTheme.typography.bodyLarge,
-                                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 6.dp).testTag("episode-browser-card-title-${episode?.id}"),
-                                    )
-                                }
+                    },
+                    modifier = Modifier.align(Alignment.End).padding(horizontal = 32.dp),
+                )
+            } else {
+                val episode = episodes.getOrNull(index)
+                val overviewText = episode?.data?.overview
+                val overview = remember(overviewText) {
+                    plainEpisodeOverview(overviewText)?.replace(overviewWhitespace, " ")
+                }
+                Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp)) {
+                    Text(
+                        text = when {
+                            loading -> stringResource(R.string.loading)
+                            loadFailed -> stringResource(R.string.episode_browser_season_error)
+                            episodes.isEmpty() -> stringResource(R.string.episode_browser_empty)
+                            else -> episodeLabel(episode, episode?.data?.parentIndexNumber ?: selection.season.indexNumber)
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().testTag("series-episode-title"),
+                    )
+                    if (episodes.isNotEmpty()) {
+                        Text(
+                            text = overview.orEmpty(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            minLines = 2,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth(0.58f).testTag("series-episode-description"),
+                        )
+                    }
+                }
+                if (episodes.isNotEmpty()) {
+                    val imageHeight = 88.dp
+                    LazyRow(
+                        state = rowState,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                            .focusRestorer(selectedEpisodeFocus)
+                            .testTag("episode-browser-rail"),
+                    ) {
+                        items(episodes.size) { itemIndex ->
+                            val item = episodes[itemIndex]
+                            val label = episodeLabel(item)
+                            Column(Modifier.width(imageHeight * AspectRatios.WIDE)) {
+                                BannerCard(
+                                    item = item,
+                                    name = null,
+                                    cornerText = item?.ui?.episodeCornerText,
+                                    played = item?.played ?: false,
+                                    playPercent = item?.data?.userData?.playedPercentage ?: 0.0,
+                                    aspectRatio = AspectRatios.WIDE,
+                                    cardHeight = imageHeight,
+                                    useSeriesForPrimary = false,
+                                    onClick = { item?.let(onClick) },
+                                    onLongClick = { item?.let { onLongClick(itemIndex, it) } },
+                                    modifier = Modifier
+                                        .then(if (itemIndex == index) {
+                                            Modifier.focusRequester(selectedEpisodeFocus)
+                                                .focusRequester(episodeFocusRequester)
+                                        } else Modifier)
+                                        .focusProperties { up = seasonFocus }
+                                        .onFocusChanged { if (it.isFocused) selectedIndex = itemIndex }
+                                        .testTag("recent-series-episode-${item?.id}")
+                                        .semantics { contentDescription = label },
+                                )
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    minLines = 2,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                        .testTag("episode-browser-card-title-${item?.id}"),
+                                )
                             }
                         }
                     }
                 }
-
-                EpisodePicker.SEASON, EpisodePicker.BROWSE_SEASON -> Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = HubInset),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
-                ) {
-                    feature(Modifier.weight(3f), 1f)
-                    SeasonPicker(
-                        seasons = seasons,
-                        selectedIndex = selection.seasonIndex,
-                        onSelect = { season, index ->
-                            val fromBrowse = activePicker == EpisodePicker.BROWSE_SEASON
-                            picker = if (fromBrowse) EpisodePicker.EPISODE else null
-                            if (!fromBrowse) restoreControl = EpisodeControl.SEASON
-                            onSelectSeason(season, index, !fromBrowse)
-                        },
-                        modifier = Modifier.weight(2f),
-                    )
-                }
-
-                EpisodePicker.EPISODE -> ExpandedEpisodeBrowser(
-                    episodes = selection.episodes,
-                    seasonLabel = seasonControlLabel,
-                    selectedIndex = browseIndex,
-                    loading = loading,
-                    loadFailed = loadFailed,
-                    onFocusEpisode = { browseIndex = it },
-                    onChangeSeason = { if (!loading) picker = EpisodePicker.BROWSE_SEASON },
-                    onSelectEpisode = { option ->
-                        selectedIndex = option
-                        browseOrigin = null
-                        picker = null
-                        revealEpisode = true
-                    },
-                    modifier = Modifier.padding(horizontal = HubInset),
-                )
             }
-            // Secondary rows are reached by scrolling past the complete hub.
-            Spacer(Modifier.height(20.dp))
-        }
-    }
-}
-
-@Composable
-private fun FeaturedEpisode(
-    episode: BaseItem?,
-    seasonNumber: Int?,
-    overview: String?,
-    runtime: Duration?,
-    onOverviewOverflow: (Boolean) -> Unit,
-    isRecent: Boolean,
-    status: String?,
-    textFraction: Float,
-    modifier: Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    val scrim = remember {
-        Brush.horizontalGradient(listOf(Color(0xEA17181C), Color(0xDE17181C)))
-    }
-    Box(modifier.testTag("episode-browser-context")) {
-        Column(
-            Modifier.fillMaxWidth(textFraction).drawBehind {
-                val height = if (overview == null) 58.dp.toPx().coerceAtMost(size.height) else size.height
-                drawRoundRect(brush = scrim, size = Size(size.width, height), cornerRadius = CornerRadius(14.dp.toPx()))
-            }.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Row(
-                Modifier.height(17.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (isRecent) {
-                    Text(
-                        stringResource(R.string.recently_added),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurface,
-                        maxLines = 1,
-                        modifier = Modifier.background(Color.White.copy(alpha = .12f), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 9.dp, vertical = 2.dp).testTag("episode-browser-recent"),
-                    )
-                }
-                if (status != null && episode != null) {
-                    Text(status, style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                } else if (runtime != null) {
-                    QuickDetails(null, runtime)
-                }
-            }
-            Text(
-                if (episode == null && status != null) status else episodeLabel(episode, seasonNumber),
-                style = MaterialTheme.typography.titleLarge,
-                color = colors.onSurface,
-                minLines = 1, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().testTag("episode-browser-featured-title"),
-            )
-            Text(
-                overview.orEmpty(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
-                minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().testTag("episode-browser-description"),
-                onTextLayout = { onOverviewOverflow(it.hasVisualOverflow) },
-            )
         }
     }
 }
@@ -483,8 +296,8 @@ private fun SeasonPicker(
         }
     }
     Column(
-        modifier.widthIn(max = 360.dp).fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+        modifier.widthIn(max = 300.dp).fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -493,7 +306,7 @@ private fun SeasonPicker(
         CompositionLocalProvider(LocalBringIntoViewSpec provides menuScroll) {
             LazyColumn(
                 state = state,
-                modifier = Modifier.heightIn(max = 294.dp).testTag("episode-browser-picker-list").focusGroup(),
+                modifier = Modifier.heightIn(max = 208.dp).testTag("episode-browser-picker-list").focusGroup(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 items(seasons.size) { option ->
@@ -512,90 +325,6 @@ private fun SeasonPicker(
                             .testTag("episode-browser-choice-$option"),
                     ) { Text(season?.let { seasonLabel(it) } ?: stringResource(R.string.loading), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExpandedEpisodeBrowser(
-    episodes: List<BaseItem?>,
-    seasonLabel: String,
-    selectedIndex: Int,
-    loading: Boolean,
-    loadFailed: Boolean,
-    onFocusEpisode: (Int) -> Unit,
-    onChangeSeason: () -> Unit,
-    onSelectEpisode: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val focusedIndex = selectedIndex.coerceIn(0, episodes.lastIndex.coerceAtLeast(0))
-    val initialIndex = remember { focusedIndex }
-    val state = rememberLazyGridState(initialFirstVisibleItemIndex = initialIndex / EpisodeColumns * EpisodeColumns)
-    val itemFocus = remember { FocusRequester() }
-    val seasonFocus = remember { FocusRequester() }
-    val inView = remember { BringIntoViewRequester() }
-    LaunchedEffect(episodes.isEmpty()) {
-        if (episodes.isEmpty()) {
-            withFrameNanos { }
-            seasonFocus.tryRequestFocus()
-        } else {
-            snapshotFlow { state.layoutInfo.visibleItemsInfo.any { it.index == initialIndex } }.first { it }
-            withFrameNanos { }
-            itemFocus.tryRequestFocus()
-        }
-        inView.bringIntoView()
-    }
-    Column(
-        modifier = modifier.fillMaxWidth().bringIntoViewRequester(inView).focusGroup()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            val status = when {
-                loading -> R.string.loading
-                loadFailed -> R.string.episode_browser_season_error
-                episodes.isEmpty() -> R.string.episode_browser_empty
-                else -> null
-            }
-            Text(
-                if (status == null) pluralStringResource(R.plurals.episode_browser_episode_count, episodes.size, episodes.size)
-                else stringResource(status),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Button(
-                onClick = onChangeSeason,
-                scale = ButtonDefaults.scale(focusedScale = 1f),
-                modifier = Modifier.widthIn(max = 250.dp).focusRequester(seasonFocus).focusProperties {
-                    up = FocusRequester.Cancel
-                    if (episodes.isNotEmpty()) down = itemFocus
-                }.testTag("episode-browser-browse-season"),
-            ) { Text(seasonLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(EpisodeColumns),
-            state = state,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 302.dp).testTag("episode-browser-picker-list").focusGroup(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(episodes.size) { option ->
-                val episode = episodes[option]
-                Button(
-                    onClick = { if (!loading && episode != null) onSelectEpisode(option) },
-                    scale = ButtonDefaults.scale(focusedScale = 1f),
-                    modifier = Modifier.height(54.dp)
-                        .then(if (option == focusedIndex) Modifier.focusRequester(itemFocus) else Modifier)
-                        .focusProperties {
-                            if (option < EpisodeColumns) up = seasonFocus
-                            if (option % EpisodeColumns == 0) left = FocusRequester.Cancel
-                            if (option % EpisodeColumns == EpisodeColumns - 1 || option == episodes.lastIndex) right = FocusRequester.Cancel
-                            if (option + EpisodeColumns >= episodes.size) down = FocusRequester.Cancel
-                        }
-                        .onFocusChanged { if (it.isFocused) onFocusEpisode(option) }
-                        .testTag("episode-browser-choice-$option"),
-                ) { Text(episodeLabel(episode), maxLines = 2, overflow = TextOverflow.Ellipsis) }
             }
         }
     }

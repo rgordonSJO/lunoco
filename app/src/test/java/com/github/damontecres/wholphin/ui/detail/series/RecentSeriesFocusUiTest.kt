@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to cover simplified series details with remote keys.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
 // Modified by Lunoco contributors. Phase 38C changes incorporated into this release source on 2026-11-22.
@@ -28,7 +29,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -95,7 +95,6 @@ class RecentSeriesFocusUiTest {
     private var loading by mutableStateOf(false)
     private var favorite by mutableStateOf(false)
     private val clicked = mutableListOf<UUID>()
-    private val overviews = mutableListOf<UUID>()
     private var currentSeries by mutableStateOf(series)
     private var seriesVisible by mutableStateOf(true)
     private var openDetailsOnEpisode = false
@@ -123,7 +122,7 @@ class RecentSeriesFocusUiTest {
                             TestSeriesBackdrop()
                             if (chrome) {
                                 val navFocus = remember { FocusRequester() }
-                                Box(Modifier.zIndex(1f).testTag("phase42-nav")) {
+                                Box(Modifier.zIndex(1f).testTag("series-floating-nav")) {
                                     LunocoTopNavigation(
                                         destination = Destination.MediaItem(currentSeries.id, BaseItemKind.SERIES),
                                         groups = emptyList(), selectedLibraryId = null, homeFocus = navFocus,
@@ -158,7 +157,6 @@ class RecentSeriesFocusUiTest {
                             )
                         },
                         onClickRecentEpisode = { clicked += it.id; if (openDetailsOnEpisode) seriesVisible = false },
-                        onEpisodeOverview = { overviews += it.id },
                         modifier = Modifier.fillMaxSize(),
                             )
                             }
@@ -183,51 +181,43 @@ class RecentSeriesFocusUiTest {
         compose.waitForIdle()
     }
 
-    @Test fun phase42RightFromFocusedPlayVisitsBrowseAndBackRestoresTheTrigger() {
+    @Test fun remoteKeysReachSeasonAndPlayTheSelectedEpisode() {
         render(chrome = true)
-        val play = compose.onNodeWithTag("episode-browser-play")
-        val browse = compose.onNodeWithTag("episode-browser-all")
+        val season = compose.onNodeWithTag("episode-browser-season")
+        episode(6).assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        episode(7).assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
         episode(6).assertIsFocused()
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
-        play.assertIsFocused()
-        compose.runOnIdle { favorite = true }
-        play.assertIsFocused()
-        capture("play-focused")
-        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        browse.assertIsFocused()
-        capture("browse-focused")
-        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
-        play.assertIsFocused()
-        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        browse.assertIsFocused()
+        season.assertIsFocused()
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        compose.onNodeWithTag("episode-browser-picker-list").assertIsDisplayed()
-        capture("expanded-browser")
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        browse.assertIsFocused()
+        compose.onNodeWithTag("episode-browser-choice-3").assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_BACK)
+        season.assertIsFocused()
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
         episode(6).assertIsFocused()
-        assertTrue(clicked.isEmpty())
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(episodes[6].id), clicked)
     }
 
-    @Test fun phase42RecentLandingOnlyHighlightsTheActualDpadTarget() {
+    @Test fun recentLandingKeepsHeadingTitleAndCardBelowNavigation() {
         render(chrome = true)
         episode(6).assertIsFocused()
-        val play = compose.onNodeWithTag("episode-browser-play").assertIsNotFocused()
-        val rendered = play.captureToImage().asAndroidBitmap()
-        val idleFill = Color(rendered.getPixel(rendered.width / 8, rendered.height / 2)).luminance()
         val header = compose.onNodeWithTag("episode-browser-heading").assertIsDisplayed()
         val headerBounds = header.getUnclippedBoundsInRoot()
-        val titleBounds = compose.onNodeWithTag("episode-browser-featured-title")
+        val titleBounds = compose.onNodeWithTag("series-episode-title")
             .assertIsDisplayed().getUnclippedBoundsInRoot()
+        val season = compose.onNodeWithTag("episode-browser-season").assertIsDisplayed().getUnclippedBoundsInRoot()
         assertTrue("Episode heading clears the floating navigation", headerBounds.top >= 56.dp)
         assertTrue("Episode title is below the heading", titleBounds.top >= headerBounds.bottom)
+        assertTrue("Season selector remains next to heading", season.left > headerBounds.right)
         assertTrue("Selected thumbnail fits in the same TV viewport", episode(6).getUnclippedBoundsInRoot().bottom <= 540.dp)
         capture("recent-landing")
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
         episode(7).assertIsFocused()
         assertEquals("Changing episodes must not vertically move the heading", headerBounds.top, header.getUnclippedBoundsInRoot().top)
-        assertTrue("The idle Play fill looks focused while Right actually moves the rail (luminance $idleFill)", idleFill < 0.55f)
+        capture("different-episode-with-navigation")
     }
 
     private fun episode(index: Int) = compose.onNodeWithTag("recent-series-episode-${episodes[index].id}")
@@ -261,7 +251,7 @@ class RecentSeriesFocusUiTest {
         if (seasonCount == 1) selected = selected.copy(season = seasons[0], seasonIndex = 0)
         render(library = library, seasonCount = seasonCount)
         episode(6).assertIsDisplayed().assertIsFocused()
-        compose.onNode(isSelected()).assertExists()
+        compose.onNodeWithTag("episode-browser-season").assertIsDisplayed()
         assertTrue(clicked.isEmpty())
     }
     @Test fun showsSingleSeasonTargetsEpisode() = assertRecentTarget(UUID(10, 1), 1)
@@ -273,7 +263,7 @@ class RecentSeriesFocusUiTest {
         selected = selected.copy(season = seasons[2], seasonIndex = 2, episodeIndex = 5, episodeId = episodes[5].id)
         render()
         episode(5).assertIsDisplayed().assertIsFocused()
-        compose.onNode(isSelected()).assertExists()
+        compose.onNodeWithTag("episode-browser-season").assertIsDisplayed()
         episode(5).performKeyInput { pressKey(Key.DirectionRight) }
         episode(6).assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
         episode(5).assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
@@ -299,7 +289,7 @@ class RecentSeriesFocusUiTest {
             currentSeries = BaseItem(BaseItemDto(id = UUID(8, 8), type = BaseItemKind.SERIES, name = "Another series"))
         }
         compose.onNodeWithText("Play").assertIsDisplayed().assertIsFocused()
-        compose.onNode(hasText("Another series") and !hasAnyAncestor(hasTestTag("episode-hub"))).assertIsDisplayed()
+        compose.onNodeWithText("Another series").assertIsDisplayed()
         assertTrue(clicked.isEmpty())
     }
 
@@ -318,7 +308,7 @@ class RecentSeriesFocusUiTest {
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         assertEquals("TV capture width", 1920, image.width)
         assertEquals("TV capture height", 1080, image.height)
-        val output = File("build/reports/episode-focus-42/$name.png")
+        val output = File("build/reports/simple-series-43/$name.png")
         output.parentFile!!.mkdirs()
         output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
     }
@@ -335,53 +325,37 @@ class RecentSeriesFocusUiTest {
         capture("different-episode")
     }
 
-    @Test fun seasonControlIsAbovePlayAndReturnsToTheSameEpisode() {
+    @Test fun seasonControlIsOneStepAboveTheSelectedEpisode() {
         render()
         val season = compose.onNodeWithTag("episode-browser-season")
-        episode(6).performKeyInput { pressKey(Key.DirectionUp) }
-        compose.onNodeWithTag("episode-browser-play").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
         season.assertIsFocused()
         capture("season-focused")
-        season.performKeyInput { pressKey(Key.DirectionDown) }
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
         episode(6).assertIsFocused()
     }
 
-    private fun openPickerFromEpisode(index: Int, browse: Boolean = false) {
-        episode(index).performKeyInput { pressKey(Key.DirectionUp) }
-        val play = compose.onNodeWithTag("episode-browser-play").assertIsFocused()
-        if (browse) {
-            play.performKeyInput { pressKey(Key.DirectionRight) }
-            compose.onNodeWithTag("episode-browser-all").assertIsFocused()
-                .performKeyInput { pressKey(Key.DirectionCenter) }
-        } else {
-            play.performKeyInput { pressKey(Key.DirectionUp) }
-            compose.onNodeWithTag("episode-browser-season").assertIsFocused()
-                .performKeyInput { pressKey(Key.DirectionCenter) }
-        }
+    private fun openPickerFromEpisode(index: Int) {
+        episode(index).assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
+        compose.onNodeWithTag("episode-browser-season").assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
     }
 
-    @Test fun chooseOlderSeasonAndBrowseToEarlierEpisodeWithoutPlaying() {
+    @Test fun choosingAnOlderSeasonHighlightsItsFirstEpisodeWithoutPlaying() {
         render()
         openPickerFromEpisode(6)
-        val list = compose.onNodeWithTag("episode-browser-picker-list")
-        list.assertIsDisplayed()
+        compose.onNodeWithTag("episode-browser-picker-list").assertIsDisplayed()
         capture("season-picker")
-        compose.onNodeWithTag("episode-browser-choice-3").assertIsFocused().performKeyInput {
-            repeat(2) { pressKey(Key.DirectionUp) }
-            pressKey(Key.DirectionCenter)
-        }
+        compose.onNodeWithTag("episode-browser-choice-3").assertIsFocused()
+        repeat(2) { sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP) }
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
         episode(0).assertIsFocused()
         compose.onNodeWithText("Season 1 ▼").assertIsDisplayed()
         compose.onNodeWithText("S1 E1 — Episode 1").assertIsDisplayed()
         capture("older-season")
-        openPickerFromEpisode(0, browse = true)
-        compose.onNodeWithTag("episode-browser-choice-0").assertIsFocused()
-        capture("browse-expanded")
-        compose.onNodeWithTag("episode-browser-choice-0").performKeyInput {
-            repeat(2) { pressKey(Key.DirectionRight) }
-            pressKey(Key.DirectionCenter)
-        }
-        episode(2).assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        episode(1).assertIsFocused()
         assertTrue(clicked.isEmpty())
     }
 
@@ -394,8 +368,7 @@ class RecentSeriesFocusUiTest {
         })
         render()
         episode(6).assertIsFocused()
-        compose.onNode(hasText("Episode 7") and
-            hasAnyAncestor(hasTestTag("episode-browser-context"))).assertIsDisplayed()
+        compose.onNodeWithTag("series-episode-title").assertTextEquals("Episode 7")
         compose.onNodeWithText("Overview for episode 7").assertDoesNotExist()
         capture("missing-metadata")
         episode(6).performKeyInput { pressKey(Key.DirectionRight) }
@@ -450,61 +423,31 @@ class RecentSeriesFocusUiTest {
         }
         compose.onNodeWithTag("episode-browser-season").assertIsFocused()
         compose.onNodeWithText("No episodes in this season.").assertIsDisplayed()
-        compose.onNodeWithTag("episode-browser-all").assertDoesNotExist()
+        compose.onNodeWithTag("episode-browser-rail").assertDoesNotExist()
     }
 
-    @Test fun backFromInlineBrowserRestoresTheHighlightedEpisode() {
-        render()
-        episode(6).performKeyInput { pressKey(Key.DirectionRight) }
-        episode(7).assertIsFocused()
-        openPickerFromEpisode(7, browse = true)
-        compose.onNodeWithTag("episode-browser-picker-list").assertIsDisplayed()
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
-        episode(7).assertIsDisplayed().assertIsFocused()
-        assertTrue(clicked.isEmpty())
-    }
-
-    @Test fun ordinarySeriesKeepsSeriesPlayFocusAndOffersTheSameHub() {
-        render(target = false)
+    @Test fun ordinarySeriesStartsAtItsRegularActionsAndOffersTheSameEpisodes() {
+        render(target = false, chrome = true)
+        compose.onNodeWithText("A series").assertIsDisplayed()
         compose.onNodeWithText("Play").assertIsFocused()
-        compose.onNodeWithText("Play").performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithText("Shuffle All").assertIsDisplayed()
+        capture("ordinary-series")
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
         compose.onNodeWithTag("episode-browser-season").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("episode-browser-recent").assertDoesNotExist()
+        compose.onNodeWithTag("episode-browser-heading").assertIsDisplayed()
         assertTrue(clicked.isEmpty())
     }
 
-    @Test fun featuredPlayUsesTheSelectedEpisodeAfterTheFocusMovesUp() {
-        render()
-        episode(6).performKeyInput { pressKey(Key.DirectionRight) }
-        episode(7).assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
-        compose.onNodeWithTag("episode-browser-play").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
-        assertEquals(listOf(episodes[7].id), clicked)
-    }
-
-    @Test fun recentBadgeTracksTheExactEpisodeAndTheHubClearsHeaderInset() {
-        render(chrome = true)
-        compose.onNodeWithTag("episode-browser-recent").assertIsDisplayed()
-        val episodeHub = compose.onNodeWithTag("episode-hub").getUnclippedBoundsInRoot()
-        val season = compose.onNodeWithTag("episode-browser-season").getUnclippedBoundsInRoot()
-        assertTrue("Season control clears the floating-header inset", season.top >= 56.dp)
-        assertTrue("Season control is on the trailing half of the header", season.left > episodeHub.left + (episodeHub.right - episodeHub.left) / 2)
-        episode(6).performKeyInput { pressKey(Key.DirectionRight) }
-        compose.onNodeWithTag("episode-browser-recent").assertDoesNotExist()
-        episode(7).performKeyInput { pressKey(Key.DirectionLeft) }
-        compose.onNodeWithTag("episode-browser-recent").assertIsDisplayed()
-    }
-
-    @Test fun longDescriptionUsesTwoLinesWithinTheScrimAndCanOpenTheExistingOverview() {
+    @Test fun longDescriptionUsesTwoLinesAndLeavesTheRowInPlace() {
         val longOverview = "<p>A lost explorer follows the winding river.</p><p>" +
             "There are many clues to see, and each takes them farther into the valley. ".repeat(15) + "</p>"
         selected = selected.copy(episodes = episodes.toMutableList().apply {
             this[6] = BaseItem(episodes[6].data.copy(overview = longOverview))
         })
         render()
-        val node = compose.onNodeWithTag("episode-browser-description")
+        val node = compose.onNodeWithTag("series-episode-description")
         val geometry = node.getUnclippedBoundsInRoot()
-        val context = compose.onNodeWithTag("episode-browser-context").getUnclippedBoundsInRoot()
+        val context = compose.onNodeWithTag("series-episode-title").getUnclippedBoundsInRoot()
         val ratio = (geometry.right - geometry.left).value / (context.right - context.left).value
         assertTrue("Description width fraction was $ratio", ratio in 0.55f..0.60f)
         val layout = mutableListOf<TextLayoutResult>()
@@ -513,21 +456,11 @@ class RecentSeriesFocusUiTest {
         assertTrue(layout.single().isLineEllipsized(1))
         assertFalse(layout.single().layoutInput.text.text.contains("<p>"))
         assertTrue(layout.single().layoutInput.text.text.contains("winding river. There are"))
-        compose.onNodeWithTag("episode-browser-overview-action").assertIsDisplayed()
         capture("long-description")
-        episode(6).performKeyInput { pressKey(Key.DirectionUp) }
-        compose.onNodeWithTag("episode-browser-play").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
-        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
-        compose.onNodeWithTag("episode-browser-overview-action").assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
-        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
-        compose.onNodeWithTag("episode-browser-overview-action").assertIsFocused().performKeyInput {
-            pressKey(Key.DirectionCenter)
-        }
-        compose.runOnIdle { assertEquals(listOf(episodes[6].id), overviews) }
-        compose.onNodeWithTag("episode-browser-overview-action").performKeyInput { pressKey(Key.DirectionDown) }
-        episode(6).assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
-        val shortGeometry = compose.onNodeWithTag("episode-browser-description").getUnclippedBoundsInRoot()
-        assertEquals("Description slot stays stable when selecting a shorter overview", geometry.bottom - geometry.top, shortGeometry.bottom - shortGeometry.top)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        episode(7).assertIsFocused()
+        val shortGeometry = node.getUnclippedBoundsInRoot()
+        assertEquals(geometry.bottom, shortGeometry.bottom)
     }
 
     @Test fun backFromSeasonPickerRestoresTheSeasonControlAndPreviousCard() {
@@ -539,23 +472,18 @@ class RecentSeriesFocusUiTest {
         episode(6).assertIsFocused()
     }
 
-    @Test fun browseSeasonChangeThenBackRestoresTheOriginalSeasonAndExactCard() {
+    @Test fun returningToASeasonRestoresItsLastHighlightedEpisode() {
         render()
-        episode(6).performKeyInput { pressKey(Key.DirectionRight) }
-        openPickerFromEpisode(7, browse = true)
-        compose.onNodeWithTag("episode-browser-choice-7").assertIsFocused().performKeyInput {
-            repeat(3) { pressKey(Key.DirectionUp) }
-        }
-        compose.onNodeWithTag("episode-browser-browse-season").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag("episode-browser-choice-3").assertIsFocused().performKeyInput {
-            pressKey(Key.DirectionUp)
-            pressKey(Key.DirectionCenter)
-        }
-        compose.onNodeWithTag("episode-browser-browse-season").assertIsDisplayed()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        openPickerFromEpisode(7)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        episode(0).assertIsFocused()
         compose.onNodeWithText("Season 2 ▼").assertIsDisplayed()
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        openPickerFromEpisode(0)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
         compose.onNodeWithText("Season 3 ▼").assertIsDisplayed()
-        compose.onNodeWithTag("episode-browser-all").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
         episode(7).assertIsFocused()
         assertTrue(clicked.isEmpty())
     }

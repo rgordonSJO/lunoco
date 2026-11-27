@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to restore a simple series details page.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 41 episode hub redesign.
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
@@ -12,7 +13,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -63,7 +63,6 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.ExtrasItem
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -223,9 +222,6 @@ fun SeriesDetails(
                 onSelectRecentSeason = viewModel::selectRecentSeason,
                 recentEpisodeKey = destination.recentEpisode?.episodeId?.toString(),
                 onClickRecentEpisode = { viewModel.navigateTo(Destination.Playback(it)) },
-                onEpisodeOverview = {
-                    overviewDialog = ItemDetailsDialogInfo(it).copy(overview = plainEpisodeOverview(it.data.overview))
-                },
                 played = played,
                 favorite = series.data.userData?.isFavorite ?: false,
                 canDelete = state.canDeleteSeries,
@@ -389,7 +385,6 @@ fun SeriesDetailsContent(
     recentEpisodeLoading: Boolean = false,
     recentEpisodeKey: String? = null,
     onClickRecentEpisode: (BaseItem) -> Unit = {},
-    onEpisodeOverview: (BaseItem) -> Unit = {},
     recentSeasonFailed: Boolean = false,
     onSelectRecentSeason: (BaseItem, Int) -> Unit = { _, _ -> },
 ) = key(series.id) {
@@ -405,7 +400,7 @@ fun SeriesDetailsContent(
     var requestedSeason by remember { mutableStateOf<java.util.UUID?>(null) }
     var hadContentFocus by remember { mutableStateOf(false) }
     var preparingRecentFocus by remember { mutableStateOf(false) }
-    var recentHubPositioned by remember { mutableStateOf(false) }
+    var recentEpisodesPositioned by remember { mutableStateOf(false) }
     val pendingRecentFocus = recentEpisodeKey != null && !recentHandled
     val jumpToRecent = pendingRecentFocus && !recentEpisodeLoading &&
         recentEpisodes?.episodeId?.toString() == recentEpisodeKey
@@ -419,13 +414,13 @@ fun SeriesDetailsContent(
         if (jumpToRecent) {
             preparingRecentFocus = true
             snapshotFlow { columnState.layoutInfo.totalItemsCount }.first { it >= 2 }
-            // Reveal the episode browser with the season control in the same item.
+            // Reveal the episodes and season control together.
             columnState.scrollToItem(1)
-            recentHubPositioned = true
+            recentEpisodesPositioned = true
         }
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = modifier.then(Modifier
             .onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown && pendingRecentFocus) {
@@ -444,14 +439,9 @@ fun SeriesDetailsContent(
                 }
             }.focusGroup()),
     ) {
-        val hubMinHeight = if (people.isEmpty() && extras.isEmpty() && similar.isEmpty() && discovered.isEmpty()) {
-            (maxHeight - 80.dp).coerceAtLeast(0.dp)
-        } else {
-            0.dp
-        }
         val railScroll = LocalBringIntoViewSpec.current
         val seriesScroll = remember { JellyLuHomeBringIntoViewSpec(inset = 0f) }
-        // TV's default focus pivot can scroll a fully visible card and hide the hub heading.
+        // TV's default focus pivot can scroll a fully visible card and hide the Episodes heading.
         CompositionLocalProvider(LocalBringIntoViewSpec provides seriesScroll) {
             LazyColumn(
                 state = columnState,
@@ -595,37 +585,32 @@ fun SeriesDetailsContent(
                 recentEpisodes?.let { selection ->
                     item(key = "recent-series-episodes") {
                         CompositionLocalProvider(LocalBringIntoViewSpec provides railScroll) {
-                            SeriesEpisodeHub(
-                                recentEpisodeKey = recentEpisodeKey,
+                            SeriesEpisodeRow(
                                 selection = selection,
                                 seasons = seasons,
                                 loading = recentEpisodeLoading,
                                 loadFailed = recentSeasonFailed,
-                                requestInitialFocus = (jumpToRecent && recentHubPositioned) || requestedSeason == selection.season.id,
+                                requestInitialFocus = (jumpToRecent && recentEpisodesPositioned) || requestedSeason == selection.season.id,
                                 onInitialFocus = {
                                     position = RECENT_EPISODES_ROW
                                     recentHandled = true
                                     preparingRecentFocus = false
                                     requestedSeason = null
                                 },
-                                onSelectSeason = { season, index, moveFocus ->
-                                    if (season.id != selection.season.id) {
-                                        requestedSeason = season.id.takeIf { moveFocus }
-                                        onSelectRecentSeason(season, index)
-                                    }
+                                onSelectSeason = { season, index ->
+                                    requestedSeason = season.id
+                                    onSelectRecentSeason(season, index)
                                 },
                                 onClick = {
                                     position = RECENT_EPISODES_ROW
                                     onClickRecentEpisode(it)
                                 },
-                                onOverview = onEpisodeOverview,
                                 onLongClick = { index, item ->
                                     position = RECENT_EPISODES_ROW
                                     onLongClickItem(index, item)
                                 },
                                 episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
                                 modifier = Modifier.fillMaxWidth()
-                                    .heightIn(min = hubMinHeight)
                                     .padding(top = 12.dp)
                                     .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
                             )
@@ -661,8 +646,8 @@ fun SeriesDetailsContent(
                         )
                     }
                 }
-                // Keep the standalone season details route as a secondary section for ordinary series.
-                if (!recentEpisodeLoading && (recentEpisodes == null || recentEpisodeKey == null)) item {
+                // Preserve access to seasons if the episode row could not be loaded.
+                if (!recentEpisodeLoading && recentEpisodes == null && seasons.isNotEmpty()) item {
                     ItemRow(
                         title = stringResource(R.string.tv_seasons) + " (${seasons.size})",
                         items = seasons,

@@ -11,3 +11,5 @@ On 2026-11-25, Lunoco contributors added the Recently Added television episode b
 On 2026-11-25, Lunoco contributors redesigned the episode hub for the v0.11.2 release. Changes cover the featured episode and synopsis, play and browse controls, season and grid navigation, and focused tests for layout and restoration. The v0.11.2 source preserves the tested Phase 41 implementation.
 
 On 2026-11-26, Lunoco contributors fixed episode control focus and browser Back restoration, compacted the episode overview, and added D-pad and viewport regressions. The v0.11.3 corresponding source preserves the tested Phase 42 application and test files.
+
+On 2026-11-26, Lunoco contributors simplified Series Details for v0.11.4. The featured episode panel, extra episode actions and expanded grid were removed. The page uses the existing series header and actions, the episode rail, and one Season selector while preserving exact Recently Added targeting and return focus.

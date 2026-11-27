@@ -1,14 +1,14 @@
 {
-  "release": "v0.11.3",
-  "title": "Lunoco v0.11.3 — Episode Navigation Fix",
+  "release": "v0.11.4",
+  "title": "Lunoco v0.11.4 — Simpler Series Details",
   "asset": "Lunoco.apk",
-  "sha256": "3e0e62ef09e891b64487718505ec1791f6dcc3cb74d72b820111e784977cd3a5",
-  "bytes": 30037494,
+  "sha256": "07c5d171832da67119c52bdd125e7981656144471e9e4a1a196d31870155b180",
+  "bytes": 30019575,
   "package": "com.ryan.lunatv.jellyfin.performance",
-  "versionName": "0.11.3",
-  "versionCode": 7,
+  "versionName": "0.11.4",
+  "versionCode": 8,
   "signerSHA256": "57a0d2a501b9a679311a88aad8d9b41a1b605119ce2cf638694dae2563cf1045",
   "nativeNoticesSHA256": "ce5f444ffecc910e2bc6b70fa09096aa812c5f60bdb99032881dcbf046b3790e",
   "rebuiltForPublication": false,
-  "correspondingSourceAsset": "Lunoco-0.11.3-corresponding-source.zip"
+  "correspondingSourceAsset": "Lunoco-0.11.4-corresponding-source.zip"
 }
