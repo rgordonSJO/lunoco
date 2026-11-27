@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to group Season with the primary series actions.
 // Modified by Lunoco contributors on 2026-11-26 to compact series details and place Season beside the series actions.
 // Modified by Lunoco contributors on 2026-11-26 to bring the full Episodes section into view on entry.
 // Modified by Lunoco contributors on 2026-11-26 to restore a simple series details page.
@@ -515,6 +516,27 @@ fun SeriesDetailsContent(
                                 },
                                 modifier = Modifier.height(MinButtonSize),
                             ) { Text(stringResource(R.string.jellylu_shuffle_all), style = MaterialTheme.typography.titleSmall) }
+                            recentEpisodes?.let { selection ->
+                                Button(
+                                    onClick = { if (!recentEpisodeLoading && seasons.isNotEmpty()) showSeasons = true },
+                                    scale = ButtonDefaults.scale(focusedScale = 1f),
+                                    modifier = Modifier.widthIn(max = 220.dp)
+                                        .height(MinButtonSize)
+                                        .focusRequester(seasonFocus)
+                                        .then(if (selection.episodes.isEmpty()) Modifier.focusRequester(episodeFocus) else Modifier)
+                                        .focusProperties {
+                                            if (!showSeasons && selection.episodes.isNotEmpty()) down = episodeFocus
+                                        }
+                                        .testTag("episode-browser-season"),
+                                ) {
+                                    Text(
+                                        stringResource(R.string.episode_browser_season_dropdown, seasonLabel(selection.season)),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                             ExpandableFaButton(
                                 title = if (played) R.string.mark_unwatched else R.string.mark_watched,
                                 iconStringRes = if (played) R.string.fa_eye else R.string.fa_eye_slash,
@@ -546,28 +568,6 @@ fun SeriesDetailsContent(
                                     iconStringRes = R.string.fa_magnifying_glass_plus,
                                     onClick = onClickDiscoverSeries,
                                 )
-                            }
-                            recentEpisodes?.let { selection ->
-                                Button(
-                                    onClick = { if (!recentEpisodeLoading && seasons.isNotEmpty()) showSeasons = true },
-                                    scale = ButtonDefaults.scale(focusedScale = 1f),
-                                    modifier = Modifier.padding(start = 4.dp)
-                                        .widthIn(max = 220.dp)
-                                        .height(MinButtonSize)
-                                        .focusRequester(seasonFocus)
-                                        .then(if (selection.episodes.isEmpty()) Modifier.focusRequester(episodeFocus) else Modifier)
-                                        .focusProperties {
-                                            if (!showSeasons && selection.episodes.isNotEmpty()) down = episodeFocus
-                                        }
-                                        .testTag("episode-browser-season"),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.episode_browser_season_dropdown, seasonLabel(selection.season)),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
                             }
                         }
                         recentEpisodes?.let { selection ->

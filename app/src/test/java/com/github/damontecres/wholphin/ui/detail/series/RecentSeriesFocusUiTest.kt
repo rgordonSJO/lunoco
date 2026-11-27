@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to verify the Phase 46 action order and focus.
 // Modified by Lunoco contributors on 2026-11-26 to verify Phase 45 series action placement and remote navigation.
 // Modified by Lunoco contributors on 2026-11-26 to check selector alignment and exact episode landing.
 // Modified by Lunoco contributors on 2026-11-26 to cover simplified series details with remote keys.
@@ -228,7 +229,8 @@ class RecentSeriesFocusUiTest {
         assertTrue("Episode title is below the heading", titleBounds.top >= headerBounds.bottom)
         val play = compose.onNodeWithText("Play").assertIsDisplayed().getUnclippedBoundsInRoot()
         val shuffle = compose.onNodeWithText("Shuffle All").assertIsDisplayed().getUnclippedBoundsInRoot()
-        assertTrue("Season follows the standard series actions", play.right < shuffle.left && shuffle.right < season.left)
+        assertEquals("Play and Shuffle All are adjacent", 16f, (shuffle.left - play.right).value, 1f)
+        assertEquals("Season is immediately next to Shuffle All", 16f, (season.left - shuffle.right).value, 1f)
         assertEquals("Season and Play are centered on the same row",
             ((play.top + play.bottom) / 2).value, ((season.top + season.bottom) / 2).value, 1f)
         assertTrue("Episodes appears directly under the action row", season.bottom <= headerBounds.top)
@@ -349,7 +351,7 @@ class RecentSeriesFocusUiTest {
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         assertEquals("TV capture width", 1920, image.width)
         assertEquals("TV capture height", 1080, image.height)
-        val output = File("build/reports/simple-series-45/$name.png")
+        val output = File("build/reports/series-polish-46/$name.png")
         output.parentFile!!.mkdirs()
         output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
     }
@@ -431,9 +433,11 @@ class RecentSeriesFocusUiTest {
                 isFavorite = false, key = "test", itemId = episodes[0].id,
             ),
         ))
-        selected = RecentSeriesEpisodes(seasons[0], 0, listOf(special), 0, special.id)
+        val specials = BaseItem(seasons[0].data.copy(name = "Specials"))
+        selected = RecentSeriesEpisodes(specials, 0, listOf(special), 0, special.id)
         render()
         episode(0).assertIsFocused()
+        compose.onNodeWithText("Specials ▼").assertIsDisplayed()
         compose.onNodeWithText("E1 — The making of the series").assertIsDisplayed()
         compose.onNodeWithText("S0 E1 — The making of the series").assertIsDisplayed()
         capture("special-watched")
@@ -480,11 +484,24 @@ class RecentSeriesFocusUiTest {
 
     @Test fun standardSeriesActionsKeepTheirOrderAndCallbacks() {
         render(target = false, chrome = true, optionalActions = true)
-        compose.onNodeWithText("Play").assertIsFocused()
+        val play = compose.onNodeWithText("Play").assertIsFocused()
+        val shuffle = compose.onNodeWithText("Shuffle All")
+        val season = compose.onNodeWithTag("episode-browser-season")
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        compose.onNodeWithText("Shuffle All").assertIsFocused()
+        shuffle.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
+        play.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        shuffle.assertIsFocused()
+        capture("shuffle-focused")
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        season.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
+        shuffle.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        season.assertIsFocused()
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
@@ -499,20 +516,28 @@ class RecentSeriesFocusUiTest {
         render(target = false, chrome = true, optionalActions = true)
         val row = compose.onNodeWithTag("series-action-row").getUnclippedBoundsInRoot()
         val season = compose.onNodeWithTag("episode-browser-season")
-        repeat(7) { sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT) }
-        season.assertIsFocused().assertIsDisplayed()
-        val selector = season.getUnclippedBoundsInRoot()
-        assertTrue("The focused selector fits inside the action viewport", selector.left >= row.left && selector.right <= row.right)
-        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
+        val right = AndroidKeyEvent.KEYCODE_DPAD_RIGHT
+        repeat(2) { sendRemoteKey(right) }
+        val selector = season.assertIsFocused().assertIsDisplayed().getUnclippedBoundsInRoot()
+        val shuffle = compose.onNodeWithText("Shuffle All").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertEquals(16f, (selector.left - shuffle.right).value, 1f)
+        assertTrue("The selector fits with Play and Shuffle All", selector.right <= row.right)
+        compose.onNodeWithText("Play").assertIsDisplayed()
+        val layout = mutableListOf<TextLayoutResult>()
+        season.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layout) }
+        assertTrue(layout.single().isLineEllipsized(0))
+        capture("optional-actions")
+        repeat(5) { sendRemoteKey(right) }
+        val discover = compose.onNodeWithText("Discover").assertIsFocused().getUnclippedBoundsInRoot()
+        assertTrue("The last utility scrolls into view", discover.left >= row.left && discover.right <= row.right)
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals(listOf("discover"), seriesActions)
-        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        repeat(5) { sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT) }
         season.assertIsFocused()
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
         episode(6).assertIsFocused()
         sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
         season.assertIsFocused()
-        capture("optional-actions")
     }
 
     @Test fun longSeriesOverviewUsesTwoLinesAndRemainsOpenable() {
@@ -582,6 +607,10 @@ class RecentSeriesFocusUiTest {
     @Test fun manySeasonsOpenOnTheCurrentSeasonWithoutLoadingEveryEpisode() {
         selected = selected.copy(season = seasons[30], seasonIndex = 30)
         render(seasonCount = seasons.size)
+        val label = compose.onNodeWithText("Season 30 ▼").assertIsDisplayed()
+        val layout = mutableListOf<TextLayoutResult>()
+        label.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layout) }
+        assertFalse(layout.single().isLineEllipsized(0))
         openPickerFromEpisode(6)
         compose.onNodeWithTag("episode-browser-choice-30").assertIsDisplayed().assertIsFocused().performKeyInput {
             pressKey(Key.DirectionDown)
