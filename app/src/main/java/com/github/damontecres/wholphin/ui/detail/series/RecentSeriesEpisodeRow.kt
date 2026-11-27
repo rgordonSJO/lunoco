@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to compact series details and place Season beside the series actions.
 // Modified by Lunoco contributors on 2026-11-26 for the compact Episodes heading and shared inset.
 // Modified by Lunoco contributors on 2026-11-26 to simplify series episode browsing.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
@@ -5,7 +6,6 @@
 // Modified by Lunoco contributors on 2026-11-25 for the Phase 40A episode browser.
 package com.github.damontecres.wholphin.ui.detail.series
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -13,7 +13,6 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -27,14 +26,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -63,7 +60,7 @@ import com.github.damontecres.wholphin.ui.tryRequestFocus
 import kotlinx.coroutines.flow.first
 
 @Composable
-private fun seasonLabel(season: BaseItem): String =
+internal fun seasonLabel(season: BaseItem): String =
     season.name?.takeIf { it.isNotBlank() }
         ?: season.indexNumber?.let { formatSeasonNumber(it) }
         ?: stringResource(R.string.tv_season)
@@ -88,7 +85,6 @@ private fun plainEpisodeOverview(overview: String?): String? =
         HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim().takeIf(String::isNotEmpty)
     }
 
-private val EpisodeSectionInset = 32.dp
 private val EpisodeRailGutter = 14.dp
 
 private val overviewWhitespace = Regex("[\\s\\u00A0]+")
@@ -99,6 +95,8 @@ internal fun SeriesEpisodeRow(
     seasons: List<BaseItem?>,
     loading: Boolean,
     loadFailed: Boolean,
+    showSeasons: Boolean,
+    seasonFocus: FocusRequester,
     requestInitialFocus: Boolean,
     onInitialFocus: () -> Unit,
     onSelectSeason: (BaseItem, Int) -> Unit,
@@ -108,16 +106,7 @@ internal fun SeriesEpisodeRow(
     modifier: Modifier = Modifier,
 ) {
     val seasonStates = rememberSaveableStateHolder()
-    val seasonFocus = remember { FocusRequester() }
-    var showSeasons by remember { mutableStateOf(false) }
-    var restoreSeasonFocus by remember { mutableStateOf(false) }
-    var returnToEpisode by remember { mutableStateOf(false) }
     val currentOnInitialFocus by rememberUpdatedState(onInitialFocus)
-
-    BackHandler(enabled = showSeasons) {
-        showSeasons = false
-        restoreSeasonFocus = true
-    }
 
     seasonStates.SaveableStateProvider(selection.season.id.toString()) {
         val episodes = selection.episodes
@@ -126,14 +115,8 @@ internal fun SeriesEpisodeRow(
         val index = selectedIndex.coerceIn(0, episodes.lastIndex.coerceAtLeast(0))
         val selectedEpisodeFocus = remember { FocusRequester() }
 
-        LaunchedEffect(showSeasons, loading, restoreSeasonFocus, returnToEpisode, requestInitialFocus) {
-            if (showSeasons) return@LaunchedEffect
-            if (restoreSeasonFocus) {
-                withFrameNanos { }
-                seasonFocus.tryRequestFocus()
-                restoreSeasonFocus = false
-            }
-            if (loading || (!requestInitialFocus && !returnToEpisode)) return@LaunchedEffect
+        LaunchedEffect(showSeasons, loading, requestInitialFocus) {
+            if (showSeasons || loading || !requestInitialFocus) return@LaunchedEffect
             if (episodes.isEmpty()) {
                 withFrameNanos { }
                 if (!seasonFocus.tryRequestFocus()) return@LaunchedEffect
@@ -143,61 +126,28 @@ internal fun SeriesEpisodeRow(
                 withFrameNanos { }
                 if (!selectedEpisodeFocus.tryRequestFocus()) return@LaunchedEffect
             }
-            returnToEpisode = false
-            if (requestInitialFocus) currentOnInitialFocus()
+            currentOnInitialFocus()
         }
 
         Column(
             modifier = modifier.focusGroup(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = EpisodeSectionInset),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.episodes),
-                    style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false).testTag("episode-browser-heading"),
-                )
-                if (!showSeasons) {
-                    Button(
-                        onClick = { if (!loading) showSeasons = true },
-                        scale = ButtonDefaults.scale(focusedScale = 1f),
-                        modifier = Modifier.widthIn(max = 220.dp)
-                            .focusRequester(seasonFocus)
-                            .then(if (episodes.isEmpty()) Modifier.focusRequester(episodeFocusRequester) else Modifier)
-                            .focusProperties {
-                                if (episodes.isNotEmpty()) down = selectedEpisodeFocus
-                            }
-                            .testTag("episode-browser-season"),
-                    ) {
-                        Text(
-                            stringResource(R.string.episode_browser_season_dropdown, seasonLabel(selection.season)),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
+            Text(
+                stringResource(R.string.episodes),
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = SeriesDetailsInset)
+                    .testTag("episode-browser-heading"),
+            )
 
             if (showSeasons) {
                 SeasonPicker(
                     seasons = seasons,
                     selectedIndex = selection.seasonIndex,
-                    onSelect = { season, seasonIndex ->
-                        showSeasons = false
-                        if (season.id == selection.season.id) {
-                            returnToEpisode = true
-                        } else {
-                            restoreSeasonFocus = true
-                            onSelectSeason(season, seasonIndex)
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = EpisodeSectionInset),
+                    onSelect = onSelectSeason,
+                    modifier = Modifier.padding(horizontal = SeriesDetailsInset),
                 )
             } else {
                 val episode = episodes.getOrNull(index)
@@ -205,7 +155,7 @@ internal fun SeriesEpisodeRow(
                 val overview = remember(overviewText) {
                     plainEpisodeOverview(overviewText)?.replace(overviewWhitespace, " ")
                 }
-                Column(Modifier.fillMaxWidth().padding(horizontal = EpisodeSectionInset)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = SeriesDetailsInset)) {
                     Text(
                         text = when {
                             loading -> stringResource(R.string.loading)
@@ -233,9 +183,9 @@ internal fun SeriesEpisodeRow(
                     val imageHeight = 88.dp
                     LazyRow(
                         state = rowState,
-                        contentPadding = PaddingValues(horizontal = EpisodeRailGutter, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = EpisodeRailGutter, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = EpisodeSectionInset - EpisodeRailGutter)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = SeriesDetailsInset - EpisodeRailGutter)
                             .focusRestorer(selectedEpisodeFocus)
                             .testTag("episode-browser-rail"),
                     ) {
@@ -270,7 +220,7 @@ internal fun SeriesEpisodeRow(
                                     minLines = 2,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 6.dp)
+                                    modifier = Modifier.padding(top = 4.dp)
                                         .testTag("episode-browser-card-title-${item?.id}"),
                                 )
                             }

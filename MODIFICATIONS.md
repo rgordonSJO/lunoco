@@ -15,3 +15,5 @@ On 2026-11-26, Lunoco contributors fixed episode control focus and browser Back 
 On 2026-11-26, Lunoco contributors simplified Series Details for v0.11.4. The featured episode panel, extra episode actions and expanded grid were removed. The page uses the existing series header and actions, the episode rail, and one Season selector while preserving exact Recently Added targeting and return focus.
 
 On 2026-11-26, Lunoco contributors aligned the Episodes and Season controls, shared the episode content inset, and fitted Recently Added entry into the visible episode section for v0.11.5. The existing episode-ID resolver, navigation, and playback route are used.
+
+On 2026-11-26, Lunoco contributors moved Season to the Series Details action row, compacted the series overview, and fitted the existing episode rail and controls into the Recently Added landing view for v0.11.6. Focused tests cover the control directions and the full episode card. The existing episode-ID resolver and playback route are used.

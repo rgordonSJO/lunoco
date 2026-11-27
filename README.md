@@ -3,11 +3,11 @@
 
 Lunoco brings Jellyfin to Google TV with floating Home controls, movie discovery, and D-pad navigation. Press and hold Left or Right during playback to scrub through a movie. A quick tap uses your skip setting. Release to seek to the previewed position. Trickplay thumbnails remain visible briefly when available.
 
-The episode hub shows the selected episode’s title and synopsis. Choose **Play Episode** to start the highlighted episode or **Browse Episodes** to open a three-column list. Press Up from a thumbnail to reach **Play Episode**, then Right for **Browse Episodes** or Up again for the season selector. Back from the expanded browser returns to **Browse Episodes**. Shows opened from Recently Added still highlight the exact episode.
+Series Details groups Season with the usual series actions. Press Up from an episode thumbnail to reach Season, and Down to return to the selected episode. The series overview is compact and can still be opened in full. Shows opened from Recently Added highlight the exact episode and bring its thumbnail and title into view.
 
 ## Install on Google TV
 
-In Downloader by AFTVnews, enter code **7639133**. You can also [download Lunoco.apk](https://github.com/rgordonSJO/lunoco/releases/latest/download/Lunoco.apk) from the [official release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.5). If Google TV prompts you, allow Downloader to install the APK.
+In Downloader by AFTVnews, enter code **7639133**. You can also [download Lunoco.apk](https://github.com/rgordonSJO/lunoco/releases/latest/download/Lunoco.apk) from the [official release](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.6). If Google TV prompts you, allow Downloader to install the APK.
 
 Install over a compatible existing copy of Lunoco to retain your settings and Jellyfin connection. An update requires the same package and signing identity and a compatible version code. Keep the existing installation if Google TV reports a conflict.
 
@@ -23,5 +23,5 @@ Lunoco is a modified version of [Wholphin](https://github.com/damontecres/Wholph
 - [Release process](RELEASING.md)
 - [Third-party notices and source references](THIRD_PARTY.md)
 - [Changes from the public base](MODIFICATIONS.md)
-- [Corresponding source and native notices](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.5)
+- [Corresponding source and native notices](https://github.com/rgordonSJO/lunoco/releases/tag/v0.11.6)
 - [Latest released APK identity](RELEASE-IDENTITY.json)

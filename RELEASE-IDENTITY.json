@@ -1,14 +1,14 @@
 {
-  "release": "v0.11.5",
-  "title": "Lunoco v0.11.5 — Series Details Layout Polish",
+  "release": "v0.11.6",
+  "title": "Lunoco v0.11.6 — Series Details Cleanup",
   "asset": "Lunoco.apk",
-  "sha256": "3d30dfeaa082b5d1de37bdabb5950c5e620424ba7e2ad347ee3f34ae93fc812e",
+  "sha256": "d4a9ab9b868a2ca8e86c0e7e4036ef972a257183db097897938b3ec62aef8d15",
   "bytes": 30019577,
   "package": "com.ryan.lunatv.jellyfin.performance",
-  "versionName": "0.11.5",
-  "versionCode": 9,
+  "versionName": "0.11.6",
+  "versionCode": 10,
   "signerSHA256": "57a0d2a501b9a679311a88aad8d9b41a1b605119ce2cf638694dae2563cf1045",
   "nativeNoticesSHA256": "ce5f444ffecc910e2bc6b70fa09096aa812c5f60bdb99032881dcbf046b3790e",
   "rebuiltForPublication": false,
-  "correspondingSourceAsset": "Lunoco-0.11.5-corresponding-source.zip"
+  "correspondingSourceAsset": "Lunoco-0.11.6-corresponding-source.zip"
 }

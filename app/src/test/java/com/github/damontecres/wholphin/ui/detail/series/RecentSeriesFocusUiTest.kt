@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to verify Phase 45 series action placement and remote navigation.
 // Modified by Lunoco contributors on 2026-11-26 to check selector alignment and exact episode landing.
 // Modified by Lunoco contributors on 2026-11-26 to cover simplified series details with remote keys.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
@@ -96,10 +97,18 @@ class RecentSeriesFocusUiTest {
     private var loading by mutableStateOf(false)
     private var favorite by mutableStateOf(false)
     private val clicked = mutableListOf<UUID>()
+    private val seriesActions = mutableListOf<String>()
     private var currentSeries by mutableStateOf(series)
     private var seriesVisible by mutableStateOf(true)
     private var openDetailsOnEpisode = false
-    private fun render(target: Boolean = true, delayed: Boolean = false, library: UUID? = null, seasonCount: Int = 4, chrome: Boolean = false) {
+    private fun render(
+        target: Boolean = true,
+        delayed: Boolean = false,
+        library: UUID? = null,
+        seasonCount: Int = 4,
+        chrome: Boolean = false,
+        optionalActions: Boolean = false,
+    ) {
         val routeTarget = if (library == null) {
             if (target) selected.episodeId.toString() else null
         } else {
@@ -133,20 +142,25 @@ class RecentSeriesFocusUiTest {
                                 }
                             }
                             Box(
-                                if (chrome) Modifier.fillMaxSize().padding(top = 56.dp, start = 24.dp, end = 24.dp)
+                                if (chrome) Modifier.fillMaxSize().padding(top = 56.dp, start = 24.dp,
+                                    end = if (optionalActions) 412.dp else 24.dp)
                                     .focusRestorer().focusGroup() else Modifier.fillMaxSize(),
                             ) {
                             SeriesDetailsContent(
                         preferences = UserPreferences(AppPreferences.getDefaultInstance(), null),
-                        series = currentSeries, seasons = seasons.take(seasonCount), similar = emptyList(), trailers = emptyList(),
+                        series = currentSeries, seasons = seasons.take(seasonCount), similar = emptyList(),
+                        trailers = if (optionalActions) listOf(mockk(relaxed = true)) else emptyList(),
                         extras = emptyList(),
                         people = if (chrome) listOf(Person(UUID(8, 1), "Fixture Actor", "Role", PersonKind.ACTOR, null, false)) else emptyList(),
                         discovered = emptyList(), played = false,
-                        favorite = favorite, canDelete = false, onClickItem = { _, _ -> }, onClickPerson = {},
-                        onLongClickItem = { _, _ -> }, overviewOnClick = {}, playOnClick = {},
-                        watchOnClick = {}, favoriteOnClick = {}, trailerOnClick = {}, onClickExtra = { _, _ -> },
+                        favorite = favorite, canDelete = optionalActions, onClickItem = { _, _ -> }, onClickPerson = {},
+                        onLongClickItem = { _, _ -> }, overviewOnClick = { seriesActions += "overview" },
+                        playOnClick = { seriesActions += if (it) "shuffle" else "play" },
+                        watchOnClick = { seriesActions += "watched" }, favoriteOnClick = { seriesActions += "favorite" },
+                        trailerOnClick = { seriesActions += "trailer" }, onClickExtra = { _, _ -> },
                         onShowContextMenu = {}, actions = mockk<ContextMenuActions>(relaxed = true),
-                        onClickDiscover = { _, _ -> }, discoverSeries = null, onClickDiscoverSeries = {},
+                        onClickDiscover = { _, _ -> }, discoverSeries = if (optionalActions) mockk(relaxed = true) else null,
+                        onClickDiscoverSeries = { seriesActions += "discover" },
                         recentEpisodes = selection, recentEpisodeLoading = loading,
                         recentEpisodeKey = routeTarget,
                         onSelectRecentSeason = { season, index ->
@@ -212,10 +226,12 @@ class RecentSeriesFocusUiTest {
         val season = compose.onNodeWithTag("episode-browser-season").assertIsDisplayed().getUnclippedBoundsInRoot()
         assertTrue("Episode heading clears the floating navigation", headerBounds.top >= 56.dp)
         assertTrue("Episode title is below the heading", titleBounds.top >= headerBounds.bottom)
-        val selectorGap = (season.left - headerBounds.right).value
-        assertTrue("Season selector is 16–24dp after the heading (was $selectorGap)", selectorGap in 16f..24f)
-        assertEquals("Season selector and Episodes heading are vertically centered",
-            ((headerBounds.top + headerBounds.bottom) / 2).value, ((season.top + season.bottom) / 2).value, 1f)
+        val play = compose.onNodeWithText("Play").assertIsDisplayed().getUnclippedBoundsInRoot()
+        val shuffle = compose.onNodeWithText("Shuffle All").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue("Season follows the standard series actions", play.right < shuffle.left && shuffle.right < season.left)
+        assertEquals("Season and Play are centered on the same row",
+            ((play.top + play.bottom) / 2).value, ((season.top + season.bottom) / 2).value, 1f)
+        assertTrue("Episodes appears directly under the action row", season.bottom <= headerBounds.top)
         val description = compose.onNodeWithTag("series-episode-description").getUnclippedBoundsInRoot()
         assertEquals(headerBounds.left, titleBounds.left)
         assertEquals(headerBounds.left, description.left)
@@ -333,7 +349,7 @@ class RecentSeriesFocusUiTest {
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         assertEquals("TV capture width", 1920, image.width)
         assertEquals("TV capture height", 1080, image.height)
-        val output = File("build/reports/simple-series-44/$name.png")
+        val output = File("build/reports/simple-series-45/$name.png")
         output.parentFile!!.mkdirs()
         output.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
     }
@@ -457,10 +473,60 @@ class RecentSeriesFocusUiTest {
         compose.onNodeWithText("Play").assertIsFocused()
         compose.onNodeWithText("Shuffle All").assertIsDisplayed()
         capture("ordinary-series")
-        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
-        compose.onNodeWithTag("episode-browser-season").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("episode-browser-season").assertIsDisplayed()
         compose.onNodeWithTag("episode-browser-heading").assertIsDisplayed()
         assertTrue(clicked.isEmpty())
+    }
+
+    @Test fun standardSeriesActionsKeepTheirOrderAndCallbacks() {
+        render(target = false, chrome = true, optionalActions = true)
+        compose.onNodeWithText("Play").assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        compose.onNodeWithText("Shuffle All").assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf("play", "shuffle", "watched", "favorite", "trailer"), seriesActions)
+    }
+
+    @Test fun optionalActionsScrollIntoViewAndKeepSeasonReachable() {
+        selected = selected.copy(season = BaseItem(seasons[3].data.copy(name = "Season with a long title ".repeat(8))))
+        render(target = false, chrome = true, optionalActions = true)
+        val row = compose.onNodeWithTag("series-action-row").getUnclippedBoundsInRoot()
+        val season = compose.onNodeWithTag("episode-browser-season")
+        repeat(7) { sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT) }
+        season.assertIsFocused().assertIsDisplayed()
+        val selector = season.getUnclippedBoundsInRoot()
+        assertTrue("The focused selector fits inside the action viewport", selector.left >= row.left && selector.right <= row.right)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf("discover"), seriesActions)
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
+        season.assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
+        episode(6).assertIsFocused()
+        sendRemoteKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
+        season.assertIsFocused()
+        capture("optional-actions")
+    }
+
+    @Test fun longSeriesOverviewUsesTwoLinesAndRemainsOpenable() {
+        val overview = "A long series overview that should still be readable in a compact layout. ".repeat(20)
+        currentSeries = BaseItem(series.data.copy(overview = overview))
+        render(target = false, chrome = true)
+        val node = compose.onNodeWithTag("series-overview")
+        val layout = mutableListOf<TextLayoutResult>()
+        node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layout) }
+        assertEquals(2, layout.single().lineCount)
+        assertTrue(layout.single().isLineEllipsized(1))
+        node.performClick()
+        assertEquals(listOf("overview"), seriesActions)
+        capture("compact-series-overview")
     }
 
     @Test fun longDescriptionUsesTwoLinesAndLeavesTheRowInPlace() {

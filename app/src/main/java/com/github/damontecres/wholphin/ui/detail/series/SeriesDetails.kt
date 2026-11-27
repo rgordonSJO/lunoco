@@ -1,3 +1,4 @@
+// Modified by Lunoco contributors on 2026-11-26 to compact series details and place Season beside the series actions.
 // Modified by Lunoco contributors on 2026-11-26 to bring the full Episodes section into view on entry.
 // Modified by Lunoco contributors on 2026-11-26 to restore a simple series details page.
 // Modified by Lunoco contributors on 2026-11-26 for episode focus and layout.
@@ -6,10 +7,12 @@
 package com.github.damontecres.wholphin.ui.detail.series
 
 import android.content.res.Resources
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -19,9 +22,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
@@ -41,10 +47,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
@@ -54,7 +61,9 @@ import androidx.compose.ui.semantics.semantics
 
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -63,7 +72,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
-import androidx.compose.foundation.layout.height
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.ExtrasItem
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -87,9 +95,8 @@ import com.github.damontecres.wholphin.ui.components.DialogItem
 import com.github.damontecres.wholphin.ui.components.DialogParams
 import com.github.damontecres.wholphin.ui.components.ErrorMessage
 import com.github.damontecres.wholphin.ui.components.ExpandableFaButton
-import com.github.damontecres.wholphin.ui.components.ExpandablePlayButton
 import com.github.damontecres.wholphin.ui.components.GenreText
-import com.github.damontecres.wholphin.ui.components.HeaderUtils
+import com.github.damontecres.wholphin.ui.components.MinButtonSize
 import com.github.damontecres.wholphin.ui.components.LoadingPage
 import com.github.damontecres.wholphin.ui.components.Optional
 import com.github.damontecres.wholphin.ui.components.OverviewText
@@ -344,6 +351,8 @@ fun SeriesDetails(
     }
 }
 
+internal val SeriesDetailsInset = 24.dp
+
 private const val HEADER_ROW = 0
 private const val SEASONS_ROW = HEADER_ROW + 1
 private const val PEOPLE_ROW = SEASONS_ROW + 1
@@ -389,14 +398,19 @@ fun SeriesDetailsContent(
     recentSeasonFailed: Boolean = false,
     onSelectRecentSeason: (BaseItem, Int) -> Unit = { _, _ -> },
 ) = key(series.id) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     val episodesBringIntoView = remember { BringIntoViewRequester() }
 
     var position by rememberInt()
     val focusRequesters = remember { List(RECENT_EPISODES_ROW + 1) { FocusRequester() } }
-    val playFocusRequester = remember { FocusRequester() }
+    val overviewFocus = remember { FocusRequester() }
+    val seasonFocus = remember { FocusRequester() }
+    val episodeFocus = focusRequesters[RECENT_EPISODES_ROW]
+    var showSeasons by remember { mutableStateOf(false) }
+    BackHandler(enabled = showSeasons) {
+        showSeasons = false
+        seasonFocus.tryRequestFocus()
+    }
     val columnState = rememberLazyListState()
     var recentHandled by rememberSaveable(series.id, recentEpisodeKey) { mutableStateOf(false) }
     var requestedSeason by remember { mutableStateOf<java.util.UUID?>(null) }
@@ -416,7 +430,7 @@ fun SeriesDetailsContent(
         if (jumpToRecent) {
             preparingRecentFocus = true
             snapshotFlow { columnState.layoutInfo.totalItemsCount }.first { it >= 2 }
-            // Reveal the entire section before giving a thumbnail focus.
+            // Anchor the actions and episode rail together below the floating navigation.
             columnState.scrollToItem(1)
             withFrameNanos { }
             episodesBringIntoView.bringIntoView()
@@ -450,7 +464,7 @@ fun SeriesDetailsContent(
             LazyColumn(
                 state = columnState,
                 contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 item {
@@ -458,167 +472,139 @@ fun SeriesDetailsContent(
                         series = series,
                         showLogo = preferences.appPreferences.interfacePreferences.showLogos,
                         overviewOnClick = overviewOnClick,
+                        overviewFocus = overviewFocus,
                         bringIntoViewRequester = bringIntoViewRequester,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .bringIntoViewRequester(bringIntoViewRequester)
-                                .padding(top = HeaderUtils.topPadding, bottom = 16.dp),
+                                .padding(start = SeriesDetailsInset, end = SeriesDetailsInset, top = 32.dp, bottom = 4.dp),
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier =
-                            Modifier
-                                .padding(start = HeaderUtils.startPadding)
-                                .focusRequester(focusRequesters[HEADER_ROW])
-                                .focusRestorer(playFocusRequester)
-                                .focusGroup()
-                                .padding(bottom = 16.dp),
-                    ) {
-                        Button(
-                            scale = ButtonDefaults.scale(focusedScale = 1f),
-                            onClick = {
-                                position = HEADER_ROW
-                                playOnClick.invoke(false)
-                            },
-                            modifier =
-                                Modifier
-                                    .height(44.dp)
-                                    .focusRequester(playFocusRequester)
-                                    .onFocusChanged {
-                                        if (it.isFocused) {
-                                            scope.launch(ExceptionHandler()) {
-                                                bringIntoViewRequester.bringIntoView()
-                                            }
-                                        }
-                                    },
-                        ) { Text(stringResource(R.string.play), style = MaterialTheme.typography.titleSmall) }
-                        Button(
-                            scale = ButtonDefaults.scale(focusedScale = 1f),
-                            onClick = {
-                                position = HEADER_ROW
-                                playOnClick.invoke(true)
-                            },
-                            modifier =
-                                Modifier.onFocusChanged {
-                                    if (it.isFocused) {
-                                        scope.launch(ExceptionHandler()) {
-                                            bringIntoViewRequester.bringIntoView()
-                                        }
-                                    }
-                                },
-                        ) { Text(stringResource(R.string.jellylu_shuffle_all), style = MaterialTheme.typography.titleSmall) }
-                        ExpandableFaButton(
-                            title = if (played) R.string.mark_unwatched else R.string.mark_watched,
-                            iconStringRes = if (played) R.string.fa_eye else R.string.fa_eye_slash,
-                            onClick = watchOnClick,
-                            modifier =
-                                Modifier.onFocusChanged {
-                                    if (it.isFocused) {
-                                        scope.launch(ExceptionHandler()) {
-                                            bringIntoViewRequester.bringIntoView()
-                                        }
-                                    }
-                                },
-                        )
-                        ExpandableFaButton(
-                            title = if (favorite) R.string.remove_favorite else R.string.add_favorite,
-                            iconStringRes = R.string.fa_heart,
-                            onClick = favoriteOnClick,
-                            iconColor = if (favorite) Color.Red else Color.Unspecified,
-                            modifier =
-                                Modifier.onFocusChanged {
-                                    if (it.isFocused) {
-                                        scope.launch(ExceptionHandler()) {
-                                            bringIntoViewRequester.bringIntoView()
-                                        }
-                                    }
-                                },
-                        )
-                        TrailerButton(
-                            trailers = trailers,
-                            trailerOnClick = trailerOnClick,
-                            modifier =
-                                Modifier.onFocusChanged {
-                                    if (it.isFocused) {
-                                        scope.launch(ExceptionHandler()) {
-                                            bringIntoViewRequester.bringIntoView()
-                                        }
-                                    }
-                                },
-                        )
-                        if (canDelete) {
-                            DeleteButton(
-                                title = series.title ?: "",
-                                onConfirmDelete = {
-                                    position = HEADER_ROW
-                                    actions.onDeleteItem.invoke(series)
-                                },
-                                modifier =
-                                    Modifier
-                                        .onFocusChanged {
-                                            if (it.isFocused) {
-                                                scope.launch(ExceptionHandler()) {
-                                                    bringIntoViewRequester.bringIntoView()
-                                                }
-                                            }
-                                        },
-                            )
-                        }
-                        AnimatedVisibility(
-                            visible = discoverSeries != null,
-                            enter = fadeIn(),
-                            exit = fadeOut(),
-                        ) {
-                            ExpandableFaButton(
-                                title = R.string.discover,
-                                iconStringRes = R.string.fa_magnifying_glass_plus,
-                                onClick = onClickDiscoverSeries,
-                                modifier =
-                                    Modifier.onFocusChanged {
-                                        if (it.isFocused) {
-                                            scope.launch(ExceptionHandler()) {
-                                                bringIntoViewRequester.bringIntoView()
-                                            }
-                                        }
-                                    },
-                            )
-                        }
-                    }
                 }
-                recentEpisodes?.let { selection ->
-                    item(key = "recent-series-episodes") {
-                        CompositionLocalProvider(LocalBringIntoViewSpec provides railScroll) {
-                            SeriesEpisodeRow(
-                                selection = selection,
-                                seasons = seasons,
-                                loading = recentEpisodeLoading,
-                                loadFailed = recentSeasonFailed,
-                                requestInitialFocus = (jumpToRecent && recentEpisodesPositioned) || requestedSeason == selection.season.id,
-                                onInitialFocus = {
-                                    position = RECENT_EPISODES_ROW
-                                    recentHandled = true
-                                    preparingRecentFocus = false
-                                    requestedSeason = null
-                                },
-                                onSelectSeason = { season, index ->
-                                    requestedSeason = season.id
-                                    onSelectRecentSeason(season, index)
-                                },
+                item(key = "series-actions-and-episodes") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(episodesBringIntoView),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                                .testTag("series-action-row")
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = SeriesDetailsInset, vertical = 4.dp)
+                                .focusGroup(),
+                        ) {
+                            Button(
+                                scale = ButtonDefaults.scale(focusedScale = 1f),
                                 onClick = {
-                                    position = RECENT_EPISODES_ROW
-                                    onClickRecentEpisode(it)
+                                    position = HEADER_ROW
+                                    playOnClick(false)
                                 },
-                                onLongClick = { index, item ->
-                                    position = RECENT_EPISODES_ROW
-                                    onLongClickItem(index, item)
+                                modifier = Modifier.height(MinButtonSize)
+                                    .focusRequester(focusRequesters[HEADER_ROW])
+                                    .focusProperties {
+                                        if (series.data.overview != null) up = overviewFocus
+                                    },
+                            ) { Text(stringResource(R.string.play), style = MaterialTheme.typography.titleSmall) }
+                            Button(
+                                scale = ButtonDefaults.scale(focusedScale = 1f),
+                                onClick = {
+                                    position = HEADER_ROW
+                                    playOnClick(true)
                                 },
-                                episodeFocusRequester = focusRequesters[RECENT_EPISODES_ROW],
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(top = 8.dp)
-                                    .bringIntoViewRequester(episodesBringIntoView)
-                                    .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
+                                modifier = Modifier.height(MinButtonSize),
+                            ) { Text(stringResource(R.string.jellylu_shuffle_all), style = MaterialTheme.typography.titleSmall) }
+                            ExpandableFaButton(
+                                title = if (played) R.string.mark_unwatched else R.string.mark_watched,
+                                iconStringRes = if (played) R.string.fa_eye else R.string.fa_eye_slash,
+                                onClick = watchOnClick,
                             )
+                            ExpandableFaButton(
+                                title = if (favorite) R.string.remove_favorite else R.string.add_favorite,
+                                iconStringRes = R.string.fa_heart,
+                                onClick = favoriteOnClick,
+                                iconColor = if (favorite) Color.Red else Color.Unspecified,
+                            )
+                            TrailerButton(trailers = trailers, trailerOnClick = trailerOnClick)
+                            if (canDelete) {
+                                DeleteButton(
+                                    title = series.title.orEmpty(),
+                                    onConfirmDelete = {
+                                        position = HEADER_ROW
+                                        actions.onDeleteItem(series)
+                                    },
+                                )
+                            }
+                            AnimatedVisibility(
+                                visible = discoverSeries != null,
+                                enter = fadeIn(),
+                                exit = fadeOut(),
+                            ) {
+                                ExpandableFaButton(
+                                    title = R.string.discover,
+                                    iconStringRes = R.string.fa_magnifying_glass_plus,
+                                    onClick = onClickDiscoverSeries,
+                                )
+                            }
+                            recentEpisodes?.let { selection ->
+                                Button(
+                                    onClick = { if (!recentEpisodeLoading && seasons.isNotEmpty()) showSeasons = true },
+                                    scale = ButtonDefaults.scale(focusedScale = 1f),
+                                    modifier = Modifier.padding(start = 4.dp)
+                                        .widthIn(max = 220.dp)
+                                        .height(MinButtonSize)
+                                        .focusRequester(seasonFocus)
+                                        .then(if (selection.episodes.isEmpty()) Modifier.focusRequester(episodeFocus) else Modifier)
+                                        .focusProperties {
+                                            if (!showSeasons && selection.episodes.isNotEmpty()) down = episodeFocus
+                                        }
+                                        .testTag("episode-browser-season"),
+                                ) {
+                                    Text(
+                                        stringResource(R.string.episode_browser_season_dropdown, seasonLabel(selection.season)),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                        recentEpisodes?.let { selection ->
+                            CompositionLocalProvider(LocalBringIntoViewSpec provides railScroll) {
+                                SeriesEpisodeRow(
+                                    selection = selection,
+                                    seasons = seasons,
+                                    loading = recentEpisodeLoading,
+                                    loadFailed = recentSeasonFailed,
+                                    showSeasons = showSeasons,
+                                    seasonFocus = seasonFocus,
+                                    requestInitialFocus = (jumpToRecent && recentEpisodesPositioned) || requestedSeason == selection.season.id,
+                                    onInitialFocus = {
+                                        position = RECENT_EPISODES_ROW
+                                        recentHandled = true
+                                        preparingRecentFocus = false
+                                        requestedSeason = null
+                                    },
+                                    onSelectSeason = { season, index ->
+                                        showSeasons = false
+                                        requestedSeason = season.id
+                                        seasonFocus.tryRequestFocus()
+                                        if (season.id != selection.season.id) onSelectRecentSeason(season, index)
+                                    },
+                                    onClick = {
+                                        position = RECENT_EPISODES_ROW
+                                        onClickRecentEpisode(it)
+                                    },
+                                    onLongClick = { index, item ->
+                                        position = RECENT_EPISODES_ROW
+                                        onLongClickItem(index, item)
+                                    },
+                                    episodeFocusRequester = episodeFocus,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .onFocusChanged { if (it.hasFocus) position = RECENT_EPISODES_ROW },
+                                )
+                            }
                         }
                     }
                 }
@@ -765,10 +751,11 @@ fun SeriesDetailsContent(
 }
 
 @Composable
-fun SeriesDetailsHeader(
+private fun SeriesDetailsHeader(
     series: BaseItem,
     showLogo: Boolean,
     overviewOnClick: () -> Unit,
+    overviewFocus: FocusRequester,
     bringIntoViewRequester: BringIntoViewRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -781,10 +768,7 @@ fun SeriesDetailsHeader(
         TitleOrLogo(
             item = series,
             showLogo = showLogo,
-            modifier =
-                Modifier
-                    .fillMaxWidth(.75f)
-                    .padding(start = HeaderUtils.startPadding),
+            modifier = Modifier.fillMaxWidth(.75f),
         )
         Column(
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -793,27 +777,25 @@ fun SeriesDetailsHeader(
             QuickDetails(
                 series.ui.quickDetails,
                 null,
-                Modifier.padding(start = HeaderUtils.startPadding),
             )
             dto.studios?.let {
                 val studios = remember { series.studioNames }
                 GenreText(
                     studios,
                     textStyle = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = HeaderUtils.startPadding),
                 )
             }
             dto.genres?.letNotEmpty {
-                GenreText(it, Modifier.padding(start = HeaderUtils.startPadding, bottom = 4.dp))
+                GenreText(it)
             }
             dto.overview?.let { overview ->
                 OverviewText(
                     overview = overview,
-                    maxLines = 3,
+                    maxLines = 2,
                     onClick = overviewOnClick,
                     textBoxHeight = Dp.Unspecified,
                     modifier =
-                        Modifier.onFocusChanged {
+                        Modifier.focusRequester(overviewFocus).testTag("series-overview").onFocusChanged {
                             if (it.isFocused) {
                                 scope.launch(ExceptionHandler()) {
                                     bringIntoViewRequester.bringIntoView()
